@@ -21,6 +21,10 @@ import java.util.Locale
 
 class LockService : Service() {
 
+    companion object {
+        var isLocked = false
+    }
+
     private var windowManager: WindowManager? = null
     private var overlayView: View? = null
     private var timer: CountDownTimer? = null
@@ -35,13 +39,14 @@ class LockService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val durationMinutes = intent?.getIntExtra("DURATION_MINUTES", 10) ?: 10
+        val durationMinutes = intent?.getIntExtra("DURATION_MINUTES", 25) ?: 25
         val durationMillis = durationMinutes * 60 * 1000L
 
+        isLocked = true
         showNotification()
         showOverlay(durationMillis)
 
-        return START_NOT_STICKY
+        return START_STICKY
     }
 
     private fun setupCallListener() {
@@ -68,8 +73,8 @@ class LockService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 channelId,
-                "Lock Service",
-                NotificationManager.IMPORTANCE_LOW
+                "Focus Mode",
+                NotificationManager.IMPORTANCE_HIGH
             )
             val manager = getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(channel)
@@ -77,8 +82,10 @@ class LockService : Service() {
 
         val notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle("LockNow Active")
-            .setContentText("Your phone is locked for focus.")
+            .setContentText("Focus mode is on. Stay productive!")
             .setSmallIcon(android.R.drawable.ic_lock_lock)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setOngoing(true)
             .build()
 
@@ -88,17 +95,18 @@ class LockService : Service() {
     private fun showOverlay(durationMillis: Long) {
         val params = getOverlayParams()
 
-        // Create a wrapper FrameLayout to handle key events
         val wrapper = object : FrameLayout(this) {
             override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-                if (event.keyCode == KeyEvent.KEYCODE_BACK || event.keyCode == KeyEvent.KEYCODE_HOME) {
-                    return true // Consume the event
+                if (event.keyCode == KeyEvent.KEYCODE_BACK || 
+                    event.keyCode == KeyEvent.KEYCODE_HOME || 
+                    event.keyCode == KeyEvent.KEYCODE_APP_SWITCH) {
+                    return true
                 }
                 return super.dispatchKeyEvent(event)
             }
         }
 
-        overlayView = LayoutInflater.from(this).inflate(R.layout.overlay_layout, wrapper, true)
+        LayoutInflater.from(this).inflate(R.layout.overlay_layout, wrapper, true)
         val timerTextView = wrapper.findViewById<TextView>(R.id.timerTextView)
         val callButton = wrapper.findViewById<Button>(R.id.callButton)
 
@@ -109,13 +117,19 @@ class LockService : Service() {
         }
 
         overlayView = wrapper
-        windowManager?.addView(overlayView, params)
+        try {
+            windowManager?.addView(overlayView, params)
+        } catch (e: Exception) {}
 
         timer = object : CountDownTimer(durationMillis, 1000) {
             override fun onTick(millisUntilFinished: Long) {
                 val minutes = (millisUntilFinished / 1000) / 60
                 val seconds = (millisUntilFinished / 1000) % 60
                 timerTextView?.text = String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
+                
+                if (!isCallActive && (overlayView == null || overlayView?.parent == null)) {
+                    showOverlayViewAgain()
+                }
             }
 
             override fun onFinish() {
@@ -125,25 +139,33 @@ class LockService : Service() {
     }
 
     private fun getOverlayParams(): WindowManager.LayoutParams {
-        return WindowManager.LayoutParams(
+        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        else
+            @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
+
+        val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            else
-                @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE,
+            type,
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                    WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
+                    WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+                    WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED,
             PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = android.view.Gravity.CENTER
+        )
+        params.gravity = android.view.Gravity.CENTER
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            params.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         }
+        return params
     }
 
     private fun hideOverlay() {
         if (overlayView?.parent != null) {
-            windowManager?.removeView(overlayView)
+            try {
+                windowManager?.removeView(overlayView)
+            } catch (e: Exception) {}
         }
     }
 
@@ -152,13 +174,13 @@ class LockService : Service() {
             val params = getOverlayParams()
             try {
                 windowManager?.addView(overlayView, params)
-            } catch (e: Exception) {
-            }
+            } catch (e: Exception) {}
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        isLocked = false
         timer?.cancel()
         hideOverlay()
     }
