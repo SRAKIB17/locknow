@@ -3,6 +3,7 @@ package com.rakib.locknow
 import android.app.*
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.graphics.PixelFormat
 import android.net.Uri
 import android.os.Build
@@ -83,7 +84,7 @@ class LockService : Service() {
                 NotificationManager.IMPORTANCE_HIGH
             )
             val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(channel)
+            manager?.createNotificationChannel(channel)
         }
 
         val notification = NotificationCompat.Builder(this, channelId)
@@ -95,7 +96,11 @@ class LockService : Service() {
             .setOngoing(true)
             .build()
 
-        startForeground(1, notification)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        } else {
+            startForeground(1, notification)
+        }
     }
 
     private fun showOverlay(durationMillis: Long) {
@@ -103,7 +108,6 @@ class LockService : Service() {
 
         val wrapper = object : FrameLayout(this) {
             override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-                // Block all hardware keys including Home, Back, Recents
                 if (event.keyCode == KeyEvent.KEYCODE_BACK || 
                     event.keyCode == KeyEvent.KEYCODE_HOME || 
                     event.keyCode == KeyEvent.KEYCODE_APP_SWITCH ||
@@ -117,16 +121,22 @@ class LockService : Service() {
             override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
                 super.onWindowFocusChanged(hasWindowFocus)
                 if (!hasWindowFocus && !isCallActive) {
-                    // Aggressively close power menu and notification shade
-                    @Suppress("DEPRECATION")
-                    val closeDialog = Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS)
-                    sendBroadcast(closeDialog)
+                    // Try to close system dialogs (power menu, status bar)
+                    try {
+                        @Suppress("DEPRECATION")
+                        val closeDialog = Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS)
+                        sendBroadcast(closeDialog)
+                    } catch (e: Exception) {}
                     
-                    // Request focus back immediately with multiple attempts
+                    // Repeatedly request focus to snatch it back from system menus
                     val handler = android.os.Handler(android.os.Looper.getMainLooper())
-                    handler.postDelayed({ this.requestFocus() }, 10)
-                    handler.postDelayed({ this.requestFocus() }, 100)
-                    handler.postDelayed({ this.requestFocus() }, 250)
+                    for (i in 1..5) {
+                        handler.postDelayed({
+                            try {
+                                this.requestFocus()
+                            } catch (e: Exception) {}
+                        }, (i * 50).toLong())
+                    }
                 }
             }
         }
@@ -139,17 +149,19 @@ class LockService : Service() {
         val emergencyNum = sharedPrefs.getString("EMERGENCY_NUMBER", "") ?: ""
 
         if (emergencyNum.isNotEmpty()) {
-            callButton?.text = "CALL EMERGENCY: $emergencyNum"
+            callButton?.text = "CALL: $emergencyNum"
         }
 
         callButton?.setOnClickListener {
-            val intent = if (emergencyNum.isNotEmpty()) {
-                Intent(Intent.ACTION_DIAL, Uri.parse("tel:$emergencyNum"))
-            } else {
-                Intent(Intent.ACTION_DIAL)
-            }
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            startActivity(intent)
+            try {
+                val intent = if (emergencyNum.isNotEmpty()) {
+                    Intent(Intent.ACTION_DIAL, Uri.parse("tel:$emergencyNum"))
+                } else {
+                    Intent(Intent.ACTION_DIAL)
+                }
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(intent)
+            } catch (e: Exception) {}
         }
 
         overlayView = wrapper
@@ -163,7 +175,6 @@ class LockService : Service() {
                 val seconds = (millisUntilFinished / 1000) % 60
                 timerTextView?.text = String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
                 
-                // Ensure overlay stays on top
                 if (!isCallActive && (overlayView == null || overlayView?.parent == null)) {
                     showOverlayViewAgain()
                 }
