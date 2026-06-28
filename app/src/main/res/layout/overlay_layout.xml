@@ -2,14 +2,7 @@
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#0F0C29">
-
-    <!-- Deep Background Glow -->
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="@android:drawable/screen_background_dark_transparent"
-        android:alpha="0.2" />
+    android:background="#1A1A2E">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -17,59 +10,51 @@
         android:layout_centerInParent="true"
         android:gravity="center"
         android:orientation="vertical"
-        android:padding="40dp">
-
-        <ImageView
-            android:layout_width="72dp"
-            android:layout_height="72dp"
-            android:src="@android:drawable/ic_lock_lock"
-            android:contentDescription="Strictly Locked"
-            android:tint="#E94560" />
+        android:padding="32dp">
 
         <TextView
+            android:id="@+id/timeView"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:text="00:00"
+            android:textColor="#FFFFFF"
+            android:textSize="64sp"
+            android:fontFamily="sans-serif-thin" />
+
+        <TextView
+            android:id="@+id/dateView"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Date"
+            android:textColor="#99FFFFFF"
+            android:textSize="18sp"
+            android:letterSpacing="0.1" />
+
+        <View
+            android:layout_width="60dp"
+            android:layout_height="2dp"
             android:layout_marginTop="32dp"
-            android:text="ULTRA FOCUS MODE ACTIVE"
-            android:textColor="#E94560"
-            android:textSize="12sp"
-            android:letterSpacing="0.3"
-            android:textStyle="bold" />
+            android:background="#E94560" />
 
         <TextView
             android:id="@+id/timerTextView"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="32dp"
             android:text="25:00"
             android:textColor="#FFFFFF"
-            android:textSize="90sp"
-            android:fontFamily="sans-serif-thin" />
+            android:textSize="80sp"
+            android:fontFamily="sans-serif-condensed-light" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="REMAINING TIME"
-            android:textColor="#4E4E6A"
-            android:textSize="11sp"
-            android:letterSpacing="0.2" />
-
-        <View
-            android:layout_width="60dp"
-            android:layout_height="1dp"
-            android:layout_marginTop="56dp"
-            android:background="#E94560" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="40dp"
+            android:layout_marginTop="48dp"
             android:gravity="center"
-            android:text="System Access is restricted.\nYour dopamine loop is broken."
-            android:textColor="#B0B0C0"
-            android:textSize="15sp"
-            android:lineSpacingExtra="8dp" />
+            android:text="Stay Focused.\nYour future self will thank you."
+            android:textColor="#99FFFFFF"
+            android:textSize="16sp"
+            android:textStyle="italic" />
 
     </LinearLayout>
 
