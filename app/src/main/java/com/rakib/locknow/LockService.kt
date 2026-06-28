@@ -1,8 +1,10 @@
 package com.rakib.locknow
 
+import android.Manifest
 import android.app.*
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.graphics.PixelFormat
 import android.net.Uri
@@ -19,6 +21,7 @@ import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import java.util.Locale
 
 class LockService : Service() {
@@ -121,14 +124,12 @@ class LockService : Service() {
             override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
                 super.onWindowFocusChanged(hasWindowFocus)
                 if (!hasWindowFocus && !isCallActive) {
-                    // Try to close system dialogs (power menu, status bar)
                     try {
                         @Suppress("DEPRECATION")
                         val closeDialog = Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS)
                         sendBroadcast(closeDialog)
                     } catch (e: Exception) {}
                     
-                    // Repeatedly request focus to snatch it back from system menus
                     val handler = android.os.Handler(android.os.Looper.getMainLooper())
                     for (i in 1..5) {
                         handler.postDelayed({
@@ -153,15 +154,21 @@ class LockService : Service() {
         }
 
         callButton?.setOnClickListener {
-            try {
-                val intent = if (emergencyNum.isNotEmpty()) {
-                    Intent(Intent.ACTION_DIAL, Uri.parse("tel:$emergencyNum"))
+            if (emergencyNum.isNotEmpty()) {
+                val callIntent = Intent(Intent.ACTION_CALL, Uri.parse("tel:$emergencyNum"))
+                callIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                if (ContextCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED) {
+                    startActivity(callIntent)
                 } else {
-                    Intent(Intent.ACTION_DIAL)
+                    val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$emergencyNum"))
+                    dialIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    startActivity(dialIntent)
                 }
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                startActivity(intent)
-            } catch (e: Exception) {}
+            } else {
+                val dialIntent = Intent(Intent.ACTION_DIAL)
+                dialIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(dialIntent)
+            }
         }
 
         overlayView = wrapper

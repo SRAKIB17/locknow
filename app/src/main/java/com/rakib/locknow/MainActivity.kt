@@ -1,17 +1,21 @@
 package com.rakib.locknow
 
+import android.Manifest
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -35,6 +39,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.rakib.locknow.ui.theme.LockNowTheme
@@ -54,10 +59,17 @@ class MainActivity : ComponentActivity() {
                 MainScreen(
                     onStartLock = { duration -> startLockService(duration) },
                     onEnableAdmin = { requestDeviceAdmin() },
-                    onEnableAccessibility = { requestAccessibility() }
+                    onEnableAccessibility = { requestAccessibility() },
+                    onEnableOverlay = { requestOverlay() }
                 )
             }
         }
+    }
+
+    private fun requestOverlay() {
+        val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
+        startActivity(intent)
+        Toast.makeText(this, "Enable 'Display over other apps' for LockNow", Toast.LENGTH_LONG).show()
     }
 
     private fun requestAccessibility() {
@@ -76,8 +88,7 @@ class MainActivity : ComponentActivity() {
 
     private fun startLockService(durationMinutes: Int) {
         if (!Settings.canDrawOverlays(this)) {
-            val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
-            startActivity(intent)
+            requestOverlay()
             return
         }
 
@@ -98,7 +109,8 @@ class MainActivity : ComponentActivity() {
 fun MainScreen(
     onStartLock: (Int) -> Unit,
     onEnableAdmin: () -> Unit,
-    onEnableAccessibility: () -> Unit
+    onEnableAccessibility: () -> Unit,
+    onEnableOverlay: () -> Unit
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -108,9 +120,18 @@ fun MainScreen(
     var isAdminActive by remember { mutableStateOf(false) }
     var isAccessibilityEnabled by remember { mutableStateOf(false) }
     var isOverlayAllowed by remember { mutableStateOf(false) }
+    var isCallPermissionGranted by remember { 
+        mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED) 
+    }
     
     var emergencyNumber by remember { 
         mutableStateOf(sharedPrefs.getString("EMERGENCY_NUMBER", "") ?: "") 
+    }
+
+    val callPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        isCallPermissionGranted = isGranted
     }
 
     DisposableEffect(lifecycleOwner) {
@@ -122,6 +143,7 @@ fun MainScreen(
                 val enabled = Settings.Secure.getInt(context.contentResolver, Settings.Secure.ACCESSIBILITY_ENABLED, 0)
                 isAccessibilityEnabled = enabled == 1
                 isOverlayAllowed = Settings.canDrawOverlays(context)
+                isCallPermissionGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -144,7 +166,6 @@ fun MainScreen(
         ) {
             Spacer(modifier = Modifier.height(60.dp))
             
-            // Logo
             Surface(
                 modifier = Modifier.size(80.dp),
                 shape = CircleShape,
@@ -157,13 +178,11 @@ fun MainScreen(
             }
             
             Spacer(modifier = Modifier.height(16.dp))
-            
             Text("LockNow Pro", fontSize = 32.sp, fontWeight = FontWeight.Black, color = Color.White)
             Text("MAXIMUM FOCUS PROTECTION", fontSize = 12.sp, color = Color(0xFFE94560), fontWeight = FontWeight.Bold)
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // Timer Selection
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(24.dp),
@@ -186,7 +205,6 @@ fun MainScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Emergency Call Setting
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(24.dp),
@@ -217,21 +235,27 @@ fun MainScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Security Configuration
             Text("SECURITY SHIELD STATUS", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Start, color = Color.Gray, fontWeight = FontWeight.Bold, fontSize = 11.sp)
             Spacer(modifier = Modifier.height(8.dp))
 
-            PermissionItem("Screen Overlay", "Locks your device interface", isOverlayAllowed, Icons.Default.Layers, {})
+            PermissionItem("Screen Overlay", "Locks your device interface", isOverlayAllowed, Icons.Default.Layers, onEnableOverlay)
             PermissionItem("Device Admin", "Prevents bypass and removal", isAdminActive, Icons.Default.AdminPanelSettings, onEnableAdmin)
             PermissionItem("Accessibility Service", "Aggressive anti-stop system", isAccessibilityEnabled, Icons.Default.Security, onEnableAccessibility)
+            
+            PermissionItem(
+                "Call Permission", 
+                "Directly call emergency contact", 
+                isCallPermissionGranted, 
+                Icons.Default.Call, 
+                { callPermissionLauncher.launch(Manifest.permission.CALL_PHONE) }
+            )
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // The Initiate Button
             Button(
                 onClick = {
-                    if (!isOverlayAllowed || !isAdminActive || !isAccessibilityEnabled) {
-                        Toast.makeText(context, "All security layers must be active!", Toast.LENGTH_SHORT).show()
+                    if (!isOverlayAllowed || !isAdminActive || !isAccessibilityEnabled || !isCallPermissionGranted) {
+                        Toast.makeText(context, "All security layers and permissions must be active!", Toast.LENGTH_SHORT).show()
                     } else {
                         onStartLock(durationMinutes)
                     }
@@ -244,7 +268,7 @@ fun MainScreen(
             }
             
             Spacer(modifier = Modifier.height(20.dp))
-            Text("WARNING: System will be strictly locked until timer ends.", color = Color.Gray.copy(alpha = 0.6f), fontSize = 10.sp)
+            Text("WARNING: System will be strictly locked until timer ends.", color = Color.Gray.copy(alpha = 0.6f), fontSize = 10.sp, textAlign = TextAlign.Center)
         }
     }
 }
