@@ -93,6 +93,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
     onStartLock: (Int) -> Unit,
@@ -101,23 +102,25 @@ fun MainScreen(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val sharedPrefs = remember { context.getSharedPreferences("LockNowPrefs", Context.MODE_PRIVATE) }
     
     var durationMinutes by remember { mutableStateOf(25) }
     var isAdminActive by remember { mutableStateOf(false) }
     var isAccessibilityEnabled by remember { mutableStateOf(false) }
     var isOverlayAllowed by remember { mutableStateOf(false) }
+    
+    var emergencyNumber by remember { 
+        mutableStateOf(sharedPrefs.getString("EMERGENCY_NUMBER", "") ?: "") 
+    }
 
-    // Refresh status when returning to app
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
                 val admin = ComponentName(context, DeviceAdminReceiver::class.java)
                 isAdminActive = dpm.isAdminActive(admin)
-                
                 val enabled = Settings.Secure.getInt(context.contentResolver, Settings.Secure.ACCESSIBILITY_ENABLED, 0)
                 isAccessibilityEnabled = enabled == 1
-                
                 isOverlayAllowed = Settings.canDrawOverlays(context)
             }
         }
@@ -141,7 +144,7 @@ fun MainScreen(
         ) {
             Spacer(modifier = Modifier.height(60.dp))
             
-            // Premium Header
+            // Logo
             Surface(
                 modifier = Modifier.size(80.dp),
                 shape = CircleShape,
@@ -155,160 +158,114 @@ fun MainScreen(
             
             Spacer(modifier = Modifier.height(16.dp))
             
-            Text(
-                "LockNow Pro",
-                fontSize = 32.sp,
-                fontWeight = FontWeight.Black,
-                color = Color.White,
-                letterSpacing = 1.sp
-            )
-            Text(
-                "STRICT FOCUS MODE",
-                fontSize = 12.sp,
-                color = Color(0xFFE94560),
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 2.sp
-            )
+            Text("LockNow Pro", fontSize = 32.sp, fontWeight = FontWeight.Black, color = Color.White)
+            Text("MAXIMUM FOCUS PROTECTION", fontSize = 12.sp, color = Color(0xFFE94560), fontWeight = FontWeight.Bold)
 
-            Spacer(modifier = Modifier.height(48.dp))
+            Spacer(modifier = Modifier.height(32.dp))
 
-            // Professional Timer Section
+            // Timer Selection
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(32.dp),
+                shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.05f))
             ) {
-                Column(
-                    modifier = Modifier.padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text("SELECT FOCUS TIME", color = Color.Gray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
+                Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("SET FOCUS DURATION", color = Color.Gray, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         TextButton(onClick = { if (durationMinutes > 5) durationMinutes -= 5 }) {
                             Text("-", fontSize = 32.sp, color = Color.White)
                         }
-                        Text(
-                            "$durationMinutes",
-                            fontSize = 64.sp,
-                            fontWeight = FontWeight.Light,
-                            color = Color.White,
-                            modifier = Modifier.padding(horizontal = 24.dp)
-                        )
+                        Text("$durationMinutes", fontSize = 56.sp, fontWeight = FontWeight.Light, color = Color.White, modifier = Modifier.padding(horizontal = 20.dp))
                         TextButton(onClick = { if (durationMinutes < 180) durationMinutes += 5 }) {
                             Text("+", fontSize = 32.sp, color = Color.White)
                         }
                     }
-                    Text("MINUTES", color = Color.Gray, letterSpacing = 4.sp)
+                    Text("MINUTES", color = Color.Gray, letterSpacing = 2.sp)
                 }
             }
 
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Emergency Call Setting
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.05f))
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Text("EMERGENCY CONTACT", color = Color.Gray, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = emergencyNumber,
+                        onValueChange = { 
+                            emergencyNumber = it
+                            sharedPrefs.edit().putString("EMERGENCY_NUMBER", it).apply()
+                        },
+                        placeholder = { Text("Enter phone number", color = Color.Gray) },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedBorderColor = Color(0xFFE94560),
+                            unfocusedBorderColor = Color.Gray
+                        ),
+                        singleLine = true,
+                        leadingIcon = { Icon(Icons.Default.Phone, null, tint = Color.Gray) }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Security Configuration
+            Text("SECURITY SHIELD STATUS", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Start, color = Color.Gray, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+            Spacer(modifier = Modifier.height(8.dp))
+
+            PermissionItem("Screen Overlay", "Locks your device interface", isOverlayAllowed, Icons.Default.Layers, {})
+            PermissionItem("Device Admin", "Prevents bypass and removal", isAdminActive, Icons.Default.AdminPanelSettings, onEnableAdmin)
+            PermissionItem("Accessibility Service", "Aggressive anti-stop system", isAccessibilityEnabled, Icons.Default.Security, onEnableAccessibility)
+
             Spacer(modifier = Modifier.height(32.dp))
 
-            // Settings/Permissions Section
-            Text(
-                "SECURITY CONFIGURATION",
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Start,
-                color = Color.Gray,
-                fontWeight = FontWeight.Bold,
-                fontSize = 12.sp,
-                letterSpacing = 1.sp
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-
-            PermissionItem(
-                title = "Screen Overlay",
-                desc = "Required to block distractions",
-                isGranted = isOverlayAllowed,
-                icon = Icons.Default.Layers,
-                onClick = { /* Usually handled in start lock but can add here */ }
-            )
-            PermissionItem(
-                title = "Device Administrator",
-                desc = "Prevents uninstall/stop",
-                isGranted = isAdminActive,
-                icon = Icons.Default.AdminPanelSettings,
-                onClick = onEnableAdmin
-            )
-            PermissionItem(
-                title = "Accessibility Anti-Bypass",
-                desc = "Blocks settings & multi-tasking",
-                isGranted = isAccessibilityEnabled,
-                icon = Icons.Default.Security,
-                onClick = onEnableAccessibility
-            )
-
-            Spacer(modifier = Modifier.height(48.dp))
-
-            // Start Button
+            // The Initiate Button
             Button(
                 onClick = {
-                    if (!isOverlayAllowed) {
-                        Toast.makeText(context, "Overlay permission is mandatory!", Toast.LENGTH_SHORT).show()
+                    if (!isOverlayAllowed || !isAdminActive || !isAccessibilityEnabled) {
+                        Toast.makeText(context, "All security layers must be active!", Toast.LENGTH_SHORT).show()
                     } else {
                         onStartLock(durationMinutes)
                     }
                 },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(64.dp),
-                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier.fillMaxWidth().height(60.dp),
+                shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE94560))
             ) {
-                Text("ENTER DEEP WORK", fontSize = 16.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                Text("INITIATE DEEP FOCUS", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
             }
             
-            Spacer(modifier = Modifier.height(32.dp))
-            
-            Text(
-                "Warning: You cannot cancel the lock once started.",
-                color = Color.Gray.copy(alpha = 0.5f),
-                fontSize = 11.sp,
-                textAlign = TextAlign.Center
-            )
+            Spacer(modifier = Modifier.height(20.dp))
+            Text("WARNING: System will be strictly locked until timer ends.", color = Color.Gray.copy(alpha = 0.6f), fontSize = 10.sp)
         }
     }
 }
 
 @Composable
-fun PermissionItem(
-    title: String,
-    desc: String,
-    isGranted: Boolean,
-    icon: ImageVector,
-    onClick: () -> Unit
-) {
+fun PermissionItem(title: String, desc: String, isGranted: Boolean, icon: ImageVector, onClick: () -> Unit) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 6.dp)
-            .clip(RoundedCornerShape(20.dp))
-            .background(if (isGranted) Color(0xFF4CAF50).copy(alpha = 0.05f) else Color.White.copy(alpha = 0.05f))
-            .clickable(enabled = !isGranted) { onClick() }
-            .padding(16.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clip(RoundedCornerShape(16.dp))
+            .background(if (isGranted) Color(0xFF4CAF50).copy(alpha = 0.1f) else Color.White.copy(alpha = 0.05f))
+            .clickable(enabled = !isGranted) { onClick() }.padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .background(if (isGranted) Color(0xFF4CAF50).copy(alpha = 0.1f) else Color.White.copy(alpha = 0.1f), CircleShape),
-            contentAlignment = Alignment.Center
-        ) {
+        Box(modifier = Modifier.size(40.dp).background(if (isGranted) Color(0xFF4CAF50).copy(alpha = 0.2f) else Color.White.copy(alpha = 0.1f), CircleShape), contentAlignment = Alignment.Center) {
             Icon(icon, null, tint = if (isGranted) Color(0xFF4CAF50) else Color.White.copy(alpha = 0.5f), modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.width(16.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-            Text(desc, color = Color.Gray, fontSize = 11.sp)
+            Text(title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            Text(desc, color = Color.Gray, fontSize = 10.sp)
         }
-        if (isGranted) {
-            Icon(Icons.Default.Check, null, tint = Color(0xFF4CAF50), modifier = Modifier.size(20.dp))
-        } else {
-            Icon(Icons.Default.ChevronRight, null, tint = Color.Gray, modifier = Modifier.size(20.dp))
-        }
+        if (isGranted) Icon(Icons.Default.Check, null, tint = Color(0xFF4CAF50), modifier = Modifier.size(20.dp))
+        else Icon(Icons.Default.ChevronRight, null, tint = Color.Gray, modifier = Modifier.size(20.dp))
     }
 }

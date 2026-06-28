@@ -4,6 +4,7 @@ import android.app.*
 import android.content.Context
 import android.content.Intent
 import android.graphics.PixelFormat
+import android.net.Uri
 import android.os.Build
 import android.os.CountDownTimer
 import android.os.IBinder
@@ -78,7 +79,7 @@ class LockService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 channelId,
-                "Focus Mode",
+                "Strict Focus Mode",
                 NotificationManager.IMPORTANCE_HIGH
             )
             val manager = getSystemService(NotificationManager::class.java)
@@ -86,8 +87,8 @@ class LockService : Service() {
         }
 
         val notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("LockNow Active")
-            .setContentText("Focus mode is on. Stay productive!")
+            .setContentTitle("LockNow Deep Focus")
+            .setContentText("System is strictly locked for focus.")
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
@@ -102,9 +103,12 @@ class LockService : Service() {
 
         val wrapper = object : FrameLayout(this) {
             override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+                // Block all hardware keys including Home, Back, Recents
                 if (event.keyCode == KeyEvent.KEYCODE_BACK || 
                     event.keyCode == KeyEvent.KEYCODE_HOME || 
-                    event.keyCode == KeyEvent.KEYCODE_APP_SWITCH) {
+                    event.keyCode == KeyEvent.KEYCODE_APP_SWITCH ||
+                    event.keyCode == KeyEvent.KEYCODE_VOLUME_UP ||
+                    event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
                     return true
                 }
                 return super.dispatchKeyEvent(event)
@@ -113,10 +117,16 @@ class LockService : Service() {
             override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
                 super.onWindowFocusChanged(hasWindowFocus)
                 if (!hasWindowFocus && !isCallActive) {
-                    // Try to collapse notifications/power menu if they appear
+                    // Aggressively close power menu and notification shade
                     @Suppress("DEPRECATION")
                     val closeDialog = Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS)
                     sendBroadcast(closeDialog)
+                    
+                    // Request focus back immediately with multiple attempts
+                    val handler = android.os.Handler(android.os.Looper.getMainLooper())
+                    handler.postDelayed({ this.requestFocus() }, 10)
+                    handler.postDelayed({ this.requestFocus() }, 100)
+                    handler.postDelayed({ this.requestFocus() }, 250)
                 }
             }
         }
@@ -125,9 +135,19 @@ class LockService : Service() {
         val timerTextView = wrapper.findViewById<TextView>(R.id.timerTextView)
         val callButton = wrapper.findViewById<Button>(R.id.callButton)
 
+        val sharedPrefs = getSharedPreferences("LockNowPrefs", Context.MODE_PRIVATE)
+        val emergencyNum = sharedPrefs.getString("EMERGENCY_NUMBER", "") ?: ""
+
+        if (emergencyNum.isNotEmpty()) {
+            callButton?.text = "CALL EMERGENCY: $emergencyNum"
+        }
+
         callButton?.setOnClickListener {
-            // Open Dialpad for emergency/any outgoing calls
-            val intent = Intent(Intent.ACTION_DIAL)
+            val intent = if (emergencyNum.isNotEmpty()) {
+                Intent(Intent.ACTION_DIAL, Uri.parse("tel:$emergencyNum"))
+            } else {
+                Intent(Intent.ACTION_DIAL)
+            }
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             startActivity(intent)
         }
@@ -143,6 +163,7 @@ class LockService : Service() {
                 val seconds = (millisUntilFinished / 1000) % 60
                 timerTextView?.text = String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
                 
+                // Ensure overlay stays on top
                 if (!isCallActive && (overlayView == null || overlayView?.parent == null)) {
                     showOverlayViewAgain()
                 }
@@ -168,7 +189,8 @@ class LockService : Service() {
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                     WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
                     WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                    WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                    WindowManager.LayoutParams.FLAG_FULLSCREEN or
+                    WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD,
             PixelFormat.TRANSLUCENT
         )
         params.gravity = android.view.Gravity.CENTER
