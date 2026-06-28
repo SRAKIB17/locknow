@@ -525,8 +525,6 @@ fun SettingsScreen(viewModel: MainViewModel) {
     val context = LocalContext.current
     val isEmergencyEnabled by viewModel.isEmergencyCallEnabled.collectAsState()
     val isQuotesEnabled by viewModel.isQuotesEnabled.collectAsState()
-    val isVibrationEnabled by viewModel.isVibrationEnabled.collectAsState()
-    val isSoundEnabled by viewModel.isSoundEnabled.collectAsState()
     val themeMode by viewModel.themeMode.collectAsState()
     val language by viewModel.language.collectAsState()
     
@@ -543,10 +541,6 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 SettingsToggleItem(Icons.AutoMirrored.Filled.PhoneCallback, stringResource(R.string.enable_emergency_call), isEmergencyEnabled) { viewModel.toggleEmergencyCall(it) }
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.05f))
                 SettingsToggleItem(Icons.Default.FormatQuote, stringResource(R.string.show_quotes), isQuotesEnabled) { viewModel.toggleQuotes(it) }
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.05f))
-                SettingsToggleItem(Icons.Default.Vibration, stringResource(R.string.vibration), isVibrationEnabled) { viewModel.toggleVibration(it) }
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.05f))
-                SettingsToggleItem(Icons.Default.NotificationsActive, stringResource(R.string.alert_sounds), isSoundEnabled) { viewModel.toggleSound(it) }
             }
         }
         
@@ -678,5 +672,9 @@ private fun formatTime(millis: Long): String {
     val h = millis / 3600000
     val m = (millis % 3600000) / 60000
     val s = (millis % 60000) / 1000
-    return if (h > 0) String.format(Locale.getDefault(), "%02d:%02d:%02d", h, m, s) else String.format(Locale.getDefault(), "%02d:%02d", m, s)
+    return if (h > 0) {
+        String.format(Locale.getDefault(), "%02d:%02d:%02d", h, m, s)
+    } else {
+        String.format(Locale.getDefault(), "%02d:%02d", m, s)
+    }
 }

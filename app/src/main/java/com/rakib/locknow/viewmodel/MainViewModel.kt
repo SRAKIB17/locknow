@@ -36,12 +36,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _isQuotesEnabled = MutableStateFlow(prefs.isQuotesEnabled)
     val isQuotesEnabled = _isQuotesEnabled.asStateFlow()
 
-    private val _isVibrationEnabled = MutableStateFlow(prefs.isVibrationEnabled)
-    val isVibrationEnabled = _isVibrationEnabled.asStateFlow()
-
-    private val _isSoundEnabled = MutableStateFlow(prefs.isSoundEnabled)
-    val isSoundEnabled = _isSoundEnabled.asStateFlow()
-
     private val _themeMode = MutableStateFlow(prefs.themeMode)
     val themeMode = _themeMode.asStateFlow()
 
@@ -51,6 +45,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _currentQuote = MutableStateFlow("")
     val currentQuote = _currentQuote.asStateFlow()
 
+    private var timerJob: Job? = null
     private var quoteJob: Job? = null
 
     init {
@@ -59,7 +54,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun startTimerUpdate() {
-        viewModelScope.launch {
+        timerJob?.cancel()
+        timerJob = viewModelScope.launch {
             while (true) {
                 val endTime = prefs.lockEndTime
                 val now = System.currentTimeMillis()
@@ -80,15 +76,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun startQuoteRotation() {
         quoteJob?.cancel()
+        if (!prefs.isQuotesEnabled) {
+            _currentQuote.value = ""
+            return
+        }
         quoteJob = viewModelScope.launch {
             while (true) {
-                if (prefs.isQuotesEnabled) {
-                    val quotes = getApplication<Application>().resources.getStringArray(R.array.motivational_quotes)
-                    if (quotes.isNotEmpty()) {
-                        _currentQuote.value = quotes.random()
-                    }
-                } else {
-                    _currentQuote.value = ""
+                val quotes = getApplication<Application>().resources.getStringArray(R.array.motivational_quotes)
+                if (quotes.isNotEmpty()) {
+                    _currentQuote.value = quotes.random()
                 }
                 delay(3.seconds)
             }
@@ -127,17 +123,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun toggleQuotes(enabled: Boolean) {
         prefs.isQuotesEnabled = enabled
         _isQuotesEnabled.value = enabled
-        if (!enabled) _currentQuote.value = "" else startQuoteRotation()
-    }
-
-    fun toggleVibration(enabled: Boolean) {
-        prefs.isVibrationEnabled = enabled
-        _isVibrationEnabled.value = enabled
-    }
-
-    fun toggleSound(enabled: Boolean) {
-        prefs.isSoundEnabled = enabled
-        _isSoundEnabled.value = enabled
+        startQuoteRotation()
     }
 
     fun setThemeMode(mode: Int) {
@@ -148,6 +134,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setLanguage(lang: String) {
         prefs.language = lang
         _language.value = lang
-        startQuoteRotation() // Refresh quote with new language
+        startQuoteRotation()
     }
 }

@@ -44,16 +44,22 @@ class LockService : Service() {
     private lateinit var prefs: PrefsManager
     private var totalDurationMillis: Long = 0
 
+    // Cached views for performance
+    private var timerTextView: TextView? = null
+    private var quoteTextView: TextView? = null
+    private var timeView: TextView? = null
+    private var dateView: TextView? = null
+    private var circularProgress: ProgressBar? = null
+
     private val quoteRunnable = object : Runnable {
         override fun run() {
             if (isLocked && prefs.isQuotesEnabled) {
                 val quotes = resources.getStringArray(R.array.motivational_quotes)
-                val quoteTextView = overlayView?.findViewById<TextView>(R.id.quoteTextView)
                 quoteTextView?.animate()?.alpha(0f)?.setDuration(500)?.withEndAction {
                     if (quotes.isNotEmpty()) {
-                        quoteTextView.text = quotes.random()
+                        quoteTextView?.text = quotes.random()
                     }
-                    quoteTextView.animate().alpha(1f).setDuration(500).start()
+                    quoteTextView?.animate()?.alpha(1f)?.setDuration(500)?.start()
                 }?.start()
                 handler.postDelayed(this, 3000)
             }
@@ -140,33 +146,30 @@ class LockService : Service() {
     }
 
     private fun playAlert() {
-        if (prefs.isVibrationEnabled) {
-            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                val vibratorManager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
-                vibratorManager.defaultVibrator
-            } else {
-                @Suppress("DEPRECATION")
-                getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(VibrationEffect.createOneShot(500, VibrationEffect.DEFAULT_AMPLITUDE))
-            } else {
-                @Suppress("DEPRECATION")
-                vibrator.vibrate(500)
-            }
+        val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val vibratorManager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+            vibratorManager.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator.vibrate(VibrationEffect.createOneShot(500, VibrationEffect.DEFAULT_AMPLITUDE))
+        } else {
+            @Suppress("DEPRECATION")
+            vibrator.vibrate(500)
         }
 
-        if (prefs.isSoundEnabled) {
-            try {
-                val notification: Uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-                val r = RingtoneManager.getRingtone(applicationContext, notification)
-                r.play()
-            } catch (e: Exception) {}
-        }
+        try {
+            val notification: Uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            val r = RingtoneManager.getRingtone(applicationContext, notification)
+            r.play()
+        } catch (e: Exception) {}
     }
 
     private fun setupCallListener() {
         val telephonyManager = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+        @Suppress("DEPRECATION")
         val listener = object : PhoneStateListener() {
             override fun onCallStateChanged(state: Int, phoneNumber: String?) {
                 when (state) {
@@ -181,6 +184,7 @@ class LockService : Service() {
                 }
             }
         }
+        @Suppress("DEPRECATION")
         telephonyManager.listen(listener, PhoneStateListener.LISTEN_CALL_STATE)
     }
 
@@ -227,10 +231,15 @@ class LockService : Service() {
         }
 
         LayoutInflater.from(this).inflate(R.layout.overlay_layout, wrapper, true)
-        val timerTextView = wrapper.findViewById<TextView>(R.id.timerTextView)
+        
+        // Cache views
+        timerTextView = wrapper.findViewById(R.id.timerTextView)
+        quoteTextView = wrapper.findViewById(R.id.quoteTextView)
+        timeView = wrapper.findViewById(R.id.timeView)
+        dateView = wrapper.findViewById(R.id.dateView)
+        circularProgress = wrapper.findViewById(R.id.circularProgress)
+        
         val callButton = wrapper.findViewById<Button>(R.id.callButton)
-        val quoteTextView = wrapper.findViewById<TextView>(R.id.quoteTextView)
-        val circularProgress = wrapper.findViewById<ProgressBar>(R.id.circularProgress)
         val remainingLabel = wrapper.findViewById<TextView>(R.id.remainingLabel)
 
         remainingLabel?.text = getString(R.string.time_remaining)
@@ -265,10 +274,6 @@ class LockService : Service() {
                     dialIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     startActivity(dialIntent)
                 }
-            } else {
-                val dialIntent = Intent(Intent.ACTION_DIAL)
-                dialIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                startActivity(dialIntent)
             }
         }
 
@@ -301,9 +306,6 @@ class LockService : Service() {
     }
 
     private fun updateDateTime() {
-        val timeView = overlayView?.findViewById<TextView>(R.id.timeView)
-        val dateView = overlayView?.findViewById<TextView>(R.id.dateView)
-        
         val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
         val dateFormat = SimpleDateFormat("EEEE, MMMM dd", Locale.getDefault())
         

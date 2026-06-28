@@ -5,11 +5,20 @@ import android.content.Intent
 import android.os.Build
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import com.rakib.locknow.data.PrefsManager
 
 class LockAccessibilityService : AccessibilityService() {
 
+    private lateinit var prefs: PrefsManager
+
+    override fun onCreate() {
+        super.onCreate()
+        prefs = PrefsManager(this)
+    }
+
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
-        if (!LockService.isLocked) return
+        // Use PrefsManager for persistent state check
+        if (!prefs.isLocked) return
 
         val packageName = event.packageName?.toString() ?: ""
         
@@ -36,55 +45,50 @@ class LockAccessibilityService : AccessibilityService() {
                 val closeDialog = Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS)
                 sendBroadcast(closeDialog)
             }
-            // Force return to home if they are interacting with SystemUI
             performGlobalAction(GLOBAL_ACTION_HOME)
         }
 
-        // 3. Block Settings & Package Installer (Prevention of Uninstall/Force Stop)
+        // 3. Block Settings & Package Installer
         val restrictedPackages = listOf(
             "com.android.settings",
             "com.google.android.settings",
             "com.android.packageinstaller",
             "com.google.android.packageinstaller",
-            "com.android.vending" // Block Play Store to prevent uninstall/changes
+            "com.android.vending"
         )
 
         if (restrictedPackages.any { packageName.contains(it) }) {
-            performGlobalAction(GLOBAL_ACTION_HOME)
-            bringAppToFront()
-        }
-
-        // 4. Detailed Node Checking (Block 'Force Stop' button specifically if it appears)
-        if (packageName.contains("settings")) {
             val rootNode = rootInActiveWindow
             if (rootNode != null) {
-                checkAndBlockNodes(rootNode)
+                if (shouldBlockNode(rootNode)) {
+                    performGlobalAction(GLOBAL_ACTION_HOME)
+                    bringAppToFront()
+                }
+            } else {
+                performGlobalAction(GLOBAL_ACTION_HOME)
+                bringAppToFront()
             }
         }
 
-        // 5. Global Navigation Block (Home/Recents bypass)
+        // 4. Global Navigation Block
         if (!isAllowed && event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             performGlobalAction(GLOBAL_ACTION_HOME)
             bringAppToFront()
         }
     }
 
-    private fun checkAndBlockNodes(node: AccessibilityNodeInfo) {
-        // Look for buttons like "Force stop", "Uninstall", or "LockNow"
-        val textToBlock = listOf("Force stop", "Uninstall", "Disable", "LockNow")
-        for (text in textToBlock) {
-            val nodes = node.findAccessibilityNodeInfosByText(text)
-            if (nodes.isNotEmpty()) {
-                performGlobalAction(GLOBAL_ACTION_HOME)
-                return
+    private fun shouldBlockNode(node: AccessibilityNodeInfo): Boolean {
+        // Search for specific forbidden keywords in multiple languages
+        val forbiddenTexts = listOf(
+            "Force stop", "Uninstall", "Disable", "LockNow", 
+            "ফোর্স স্টপ", "আনইনস্টল", "নিষ্ক্রিয়", "লকনাউ"
+        )
+        for (text in forbiddenTexts) {
+            if (node.findAccessibilityNodeInfosByText(text).isNotEmpty()) {
+                return true
             }
         }
-        for (i in 0 until node.childCount) {
-            val child = node.getChild(i)
-            if (child != null) {
-                checkAndBlockNodes(child)
-            }
-        }
+        return false
     }
 
     private fun bringAppToFront() {

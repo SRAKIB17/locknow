@@ -42,14 +42,6 @@ class PrefsManager(context: Context) {
         get() = prefs.getBoolean("SETTING_QUOTES", true)
         set(value) = prefs.edit().putBoolean("SETTING_QUOTES", value).apply()
 
-    var isVibrationEnabled: Boolean
-        get() = prefs.getBoolean("SETTING_VIBRATION", true)
-        set(value) = prefs.edit().putBoolean("SETTING_VIBRATION", value).apply()
-
-    var isSoundEnabled: Boolean
-        get() = prefs.getBoolean("SETTING_SOUND", true)
-        set(value) = prefs.edit().putBoolean("SETTING_SOUND", value).apply()
-
     var themeMode: Int
         get() = prefs.getInt("SETTING_THEME_MODE", 0) // 0: Dark, 1: Light, 2: System
         set(value) = prefs.edit().putInt("SETTING_THEME_MODE", value).apply()
