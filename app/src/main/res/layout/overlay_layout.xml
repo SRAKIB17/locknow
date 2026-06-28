@@ -2,7 +2,7 @@
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#1A1A2E">
+    android:background="#0F0C29">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -47,13 +47,15 @@
             android:fontFamily="sans-serif-condensed-light" />
 
         <TextView
+            android:id="@+id/quoteTextView"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="48dp"
             android:gravity="center"
-            android:text="Stay Focused.\nYour future self will thank you."
-            android:textColor="#99FFFFFF"
+            android:text="Focus on being productive instead of busy."
+            android:textColor="#B0B0C0"
             android:textSize="16sp"
+            android:lineSpacingExtra="4dp"
             android:textStyle="italic" />
 
     </LinearLayout>

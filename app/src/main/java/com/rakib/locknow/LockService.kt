@@ -23,6 +23,7 @@ import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import com.rakib.locknow.data.PrefsManager
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -37,6 +38,7 @@ class LockService : Service() {
     private var timer: CountDownTimer? = null
     private var isCallActive = false
     private val handler = Handler(Looper.getMainLooper())
+    private lateinit var prefs: PrefsManager
 
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -62,26 +64,22 @@ class LockService : Service() {
         override fun run() {
             if (isLocked && !isCallActive) {
                 try {
-                    // 1. Collapse Status Bar
                     val statusBarService = getSystemService("statusbar")
                     val statusBarClass = Class.forName("android.app.StatusBarManager")
                     val collapseMethod = statusBarClass.getMethod("collapsePanels")
                     collapseMethod.invoke(statusBarService)
                     
-                    // 2. Close System Dialogs (Power Menu)
                     @Suppress("DEPRECATION")
                     val closeDialog = Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS)
                     sendBroadcast(closeDialog)
                     
-                    // 3. Keep Overlay on Top
                     if (overlayView?.parent == null) {
                         showOverlayViewAgain()
                     }
                     overlayView?.requestFocus()
-                    
-                    updateTimeAndDate()
+                    updateDateTime()
                 } catch (e: Exception) {}
-                handler.postDelayed(this, 50)
+                handler.postDelayed(this, 30)
             }
         }
     }
@@ -90,8 +88,10 @@ class LockService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        prefs = PrefsManager(this)
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         setupCallListener()
+        
         val filter = IntentFilter(Intent.ACTION_SCREEN_OFF)
         registerReceiver(screenReceiver, filter)
     }
@@ -101,11 +101,10 @@ class LockService : Service() {
         val durationMillis = durationMinutes * 60 * 1000L
         
         val endTime = System.currentTimeMillis() + durationMillis
-        getSharedPreferences("LockNowPrefs", Context.MODE_PRIVATE).edit()
-            .putLong("LOCK_END_TIME", endTime)
-            .apply()
-
+        prefs.lockEndTime = endTime
+        prefs.isLocked = true
         isLocked = true
+
         showNotification()
         showOverlay(durationMillis)
         handler.post(forceFocusRunnable)
@@ -135,14 +134,14 @@ class LockService : Service() {
     private fun showNotification() {
         val channelId = "lock_service_channel"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(channelId, "LockDown Active", NotificationManager.IMPORTANCE_HIGH)
+            val channel = NotificationChannel(channelId, "LockDown Shield", NotificationManager.IMPORTANCE_HIGH)
             val manager = getSystemService(NotificationManager::class.java)
             manager?.createNotificationChannel(channel)
         }
 
         val notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("LockNow Protection")
-            .setContentText("Device is strictly frozen for focus.")
+            .setContentTitle("LockNow: DEEP FOCUS ACTIVE")
+            .setContentText("System is strictly frozen. Timer is running.")
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setOngoing(true)
@@ -164,6 +163,11 @@ class LockService : Service() {
             override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
                 super.onWindowFocusChanged(hasWindowFocus)
                 if (!hasWindowFocus && !isCallActive && isLocked) {
+                    try {
+                        @Suppress("DEPRECATION")
+                        val closeDialog = Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS)
+                        sendBroadcast(closeDialog)
+                    } catch (e: Exception) {}
                     handler.postDelayed({ if (isLocked) this.requestFocus() }, 1)
                 }
             }
@@ -172,39 +176,54 @@ class LockService : Service() {
         LayoutInflater.from(this).inflate(R.layout.overlay_layout, wrapper, true)
         val timerTextView = wrapper.findViewById<TextView>(R.id.timerTextView)
         val callButton = wrapper.findViewById<Button>(R.id.callButton)
+        val quoteTextView = wrapper.findViewById<TextView>(R.id.quoteTextView)
 
-        val sharedPrefs = getSharedPreferences("LockNowPrefs", Context.MODE_PRIVATE)
-        val emergencyNum = sharedPrefs.getString("EMERGENCY_NUMBER", "") ?: ""
+        val emergencyNum = prefs.emergencyPhone ?: ""
+        if (emergencyNum.isNotEmpty()) {
+            callButton?.text = "EMERGENCY: $emergencyNum"
+            callButton?.visibility = if (prefs.isEmergencyCallEnabled) View.VISIBLE else View.GONE
+        } else {
+            callButton?.visibility = View.GONE
+        }
+
+        if (prefs.isQuotesEnabled) {
+            quoteTextView?.text = getRandomQuote()
+            quoteTextView?.visibility = View.VISIBLE
+        } else {
+            quoteTextView?.visibility = View.GONE
+        }
 
         callButton?.setOnClickListener {
-            val intent = if (emergencyNum.isNotEmpty()) {
-                Intent(Intent.ACTION_CALL, Uri.parse("tel:$emergencyNum"))
-            } else {
-                Intent(Intent.ACTION_DIAL)
-            }
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED || emergencyNum.isEmpty()) {
-                startActivity(intent)
+            if (emergencyNum.isNotEmpty()) {
+                val callIntent = Intent(Intent.ACTION_CALL, Uri.parse("tel:$emergencyNum"))
+                callIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                if (ContextCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED) {
+                    startActivity(callIntent)
+                }
             }
         }
 
         overlayView = wrapper
-        windowManager?.addView(overlayView, params)
+        try {
+            windowManager?.addView(overlayView, params)
+        } catch (e: Exception) {}
 
         timer = object : CountDownTimer(durationMillis, 1000) {
             override fun onTick(millisUntilFinished: Long) {
-                val minutes = (millisUntilFinished / 1000) / 60
-                val seconds = (millisUntilFinished / 1000) % 60
-                timerTextView?.text = String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
+                val h = (millisUntilFinished / 1000) / 3600
+                val m = ((millisUntilFinished / 1000) % 3600) / 60
+                val s = (millisUntilFinished / 1000) % 60
+                timerTextView?.text = if (h > 0) String.format("%02d:%02d:%02d", h, m, s) else String.format("%02d:%02d", m, s)
             }
             override fun onFinish() {
                 isLocked = false
+                prefs.isLocked = false
                 stopSelf()
             }
         }.start()
     }
 
-    private fun updateTimeAndDate() {
+    private fun updateDateTime() {
         val timeView = overlayView?.findViewById<TextView>(R.id.timeView)
         val dateView = overlayView?.findViewById<TextView>(R.id.dateView)
         
@@ -243,19 +262,36 @@ class LockService : Service() {
 
     private fun hideOverlay() {
         if (overlayView?.parent != null) {
-            windowManager?.removeView(overlayView)
+            try {
+                windowManager?.removeView(overlayView)
+            } catch (e: Exception) {}
         }
     }
 
     private fun showOverlayViewAgain() {
         if (overlayView != null && overlayView?.parent == null) {
-            windowManager?.addView(overlayView, getOverlayParams())
+            try {
+                windowManager?.addView(overlayView, getOverlayParams())
+            } catch (e: Exception) {}
         }
+    }
+
+    private fun getRandomQuote(): String {
+        val quotes = listOf(
+            "Focus on being productive instead of busy.",
+            "Your future self will thank you.",
+            "Deep work is the superpower of the 21st century.",
+            "Stay away from distractions, they cost you your dreams.",
+            "Success is built on focus and consistency.",
+            "One hour of deep focus is worth ten hours of distraction."
+        )
+        return quotes.random()
     }
 
     override fun onDestroy() {
         super.onDestroy()
         isLocked = false
+        prefs.isLocked = false
         handler.removeCallbacks(forceFocusRunnable)
         timer?.cancel()
         hideOverlay()
