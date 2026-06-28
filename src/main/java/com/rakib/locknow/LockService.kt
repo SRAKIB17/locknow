@@ -109,6 +109,16 @@ class LockService : Service() {
                 }
                 return super.dispatchKeyEvent(event)
             }
+
+            override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
+                super.onWindowFocusChanged(hasWindowFocus)
+                if (!hasWindowFocus && !isCallActive) {
+                    // Try to collapse notifications/power menu if they appear
+                    @Suppress("DEPRECATION")
+                    val closeDialog = Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS)
+                    sendBroadcast(closeDialog)
+                }
+            }
         }
 
         LayoutInflater.from(this).inflate(R.layout.overlay_layout, wrapper, true)
@@ -116,6 +126,7 @@ class LockService : Service() {
         val callButton = wrapper.findViewById<Button>(R.id.callButton)
 
         callButton?.setOnClickListener {
+            // Open Dialpad for emergency/any outgoing calls
             val intent = Intent(Intent.ACTION_DIAL)
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             startActivity(intent)
@@ -156,7 +167,8 @@ class LockService : Service() {
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                     WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
-                    WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED,
+                    WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                    WindowManager.LayoutParams.FLAG_FULLSCREEN,
             PixelFormat.TRANSLUCENT
         )
         params.gravity = android.view.Gravity.CENTER
