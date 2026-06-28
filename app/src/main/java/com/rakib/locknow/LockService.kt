@@ -41,22 +41,23 @@ class LockService : Service() {
         override fun run() {
             if (isLocked && !isCallActive) {
                 try {
-                    // Force collapse status bar / notifications
+                    // 1. Force collapse the status bar / notification shade
                     val statusBarService = getSystemService("statusbar")
                     val statusBarClass = Class.forName("android.app.StatusBarManager")
                     val collapseMethod = statusBarClass.getMethod("collapsePanels")
                     collapseMethod.invoke(statusBarService)
                     
+                    // 2. Aggressively close any system dialogs (like the power menu)
                     @Suppress("DEPRECATION")
                     val closeDialog = Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS)
                     sendBroadcast(closeDialog)
                     
+                    // 3. Ensure the overlay is present and front-most
                     if (overlayView?.parent == null) {
                         showOverlayViewAgain()
                     }
                     overlayView?.requestFocus()
                 } catch (e: Exception) {
-                    // Fallback to simpler method if reflection fails
                     try {
                         @Suppress("DEPRECATION")
                         val closeDialog = Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS)
@@ -64,8 +65,8 @@ class LockService : Service() {
                     } catch (ex: Exception) {}
                 }
                 
-                // Absolute high-frequency heartbeat (30ms) for total domination
-                handler.postDelayed(this, 30)
+                // Extreme frequency (20ms) for total lockdown
+                handler.postDelayed(this, 20)
             }
         }
     }
@@ -124,8 +125,8 @@ class LockService : Service() {
         }
 
         val notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("LockNow: ULTRA-RESTRICT MODE")
-            .setContentText("Complete system freeze active. No bypass possible.")
+            .setContentTitle("LockNow: ABSOLUTE FREEZE")
+            .setContentText("Your device is strictly locked. No bypass allowed.")
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setOngoing(true)
@@ -143,24 +144,24 @@ class LockService : Service() {
 
         val wrapper = object : FrameLayout(this) {
             override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-                // Consume ALL key events (Home, Back, Recents, Power Menu Triggers, Volume)
+                // Completely disable hardware keys
                 return true 
             }
 
             override fun onInterceptTouchEvent(ev: MotionEvent?): Boolean {
-                // Return true to consume all touches for the whole screen
-                // but we need to let the child (call button) handle its own touches
+                // Disable all touch interactions except what is explicitly allowed in children
                 return false 
             }
             
             override fun onTouchEvent(event: MotionEvent?): Boolean {
-                // Swallow any touches that fall through to the background
+                // Consume every touch event that hits the overlay
                 return true
             }
 
             override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
                 super.onWindowFocusChanged(hasWindowFocus)
                 if (!hasWindowFocus && !isCallActive && isLocked) {
+                    // Immediate focus recapture if any system menu tries to overlay us
                     try {
                         @Suppress("DEPRECATION")
                         val closeDialog = Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS)
@@ -236,7 +237,7 @@ class LockService : Service() {
             type,
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or // Allow covering status bar
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                     WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
                     WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
                     WindowManager.LayoutParams.FLAG_FULLSCREEN or
