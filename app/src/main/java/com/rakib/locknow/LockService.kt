@@ -9,6 +9,7 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.graphics.PixelFormat
+import android.media.RingtoneManager
 import android.net.Uri
 import android.os.*
 import android.telephony.PhoneStateListener
@@ -20,10 +21,12 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.rakib.locknow.data.PrefsManager
+import com.rakib.locknow.utils.LocaleHelper
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -39,6 +42,23 @@ class LockService : Service() {
     private var isCallActive = false
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var prefs: PrefsManager
+    private var totalDurationMillis: Long = 0
+
+    private val quoteRunnable = object : Runnable {
+        override fun run() {
+            if (isLocked && prefs.isQuotesEnabled) {
+                val quotes = resources.getStringArray(R.array.motivational_quotes)
+                val quoteTextView = overlayView?.findViewById<TextView>(R.id.quoteTextView)
+                quoteTextView?.animate()?.alpha(0f)?.setDuration(500)?.withEndAction {
+                    if (quotes.isNotEmpty()) {
+                        quoteTextView.text = quotes.random()
+                    }
+                    quoteTextView.animate().alpha(1f).setDuration(500).start()
+                }?.start()
+                handler.postDelayed(this, 3000)
+            }
+        }
+    }
 
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -46,6 +66,11 @@ class LockService : Service() {
                 wakeUpScreen()
             }
         }
+    }
+
+    override fun attachBaseContext(newBase: Context) {
+        val prefs = PrefsManager(newBase)
+        super.attachBaseContext(LocaleHelper.wrap(newBase, prefs.language))
     }
 
     private fun wakeUpScreen() {
@@ -98,18 +123,46 @@ class LockService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val durationMinutes = intent?.getIntExtra("DURATION_MINUTES", 25) ?: 25
-        val durationMillis = durationMinutes * 60 * 1000L
+        totalDurationMillis = durationMinutes * 60 * 1000L
         
-        val endTime = System.currentTimeMillis() + durationMillis
+        val endTime = System.currentTimeMillis() + totalDurationMillis
         prefs.lockEndTime = endTime
         prefs.isLocked = true
         isLocked = true
 
-        showNotification()
-        showOverlay(durationMillis)
+        playAlert()
+        showOverlay(totalDurationMillis)
         handler.post(forceFocusRunnable)
+        handler.post(quoteRunnable)
+        showNotification()
 
         return START_STICKY
+    }
+
+    private fun playAlert() {
+        if (prefs.isVibrationEnabled) {
+            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val vibratorManager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+                vibratorManager.defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator.vibrate(VibrationEffect.createOneShot(500, VibrationEffect.DEFAULT_AMPLITUDE))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(500)
+            }
+        }
+
+        if (prefs.isSoundEnabled) {
+            try {
+                val notification: Uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+                val r = RingtoneManager.getRingtone(applicationContext, notification)
+                r.play()
+            } catch (e: Exception) {}
+        }
     }
 
     private fun setupCallListener() {
@@ -119,7 +172,7 @@ class LockService : Service() {
                 when (state) {
                     TelephonyManager.CALL_STATE_OFFHOOK, TelephonyManager.CALL_STATE_RINGING -> {
                         isCallActive = true
-                        hideOverlay()
+                        removeOverlay()
                     }
                     TelephonyManager.CALL_STATE_IDLE -> {
                         isCallActive = false
@@ -134,14 +187,14 @@ class LockService : Service() {
     private fun showNotification() {
         val channelId = "lock_service_channel"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(channelId, "LockDown Shield", NotificationManager.IMPORTANCE_HIGH)
+            val channel = NotificationChannel(channelId, getString(R.string.locked_desc), NotificationManager.IMPORTANCE_HIGH)
             val manager = getSystemService(NotificationManager::class.java)
             manager?.createNotificationChannel(channel)
         }
 
         val notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("LockNow: DEEP FOCUS ACTIVE")
-            .setContentText("System is strictly frozen. Timer is running.")
+            .setContentTitle(getString(R.string.app_name))
+            .setContentText(getString(R.string.locked_desc))
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setOngoing(true)
@@ -177,17 +230,25 @@ class LockService : Service() {
         val timerTextView = wrapper.findViewById<TextView>(R.id.timerTextView)
         val callButton = wrapper.findViewById<Button>(R.id.callButton)
         val quoteTextView = wrapper.findViewById<TextView>(R.id.quoteTextView)
+        val circularProgress = wrapper.findViewById<ProgressBar>(R.id.circularProgress)
+        val remainingLabel = wrapper.findViewById<TextView>(R.id.remainingLabel)
+
+        remainingLabel?.text = getString(R.string.time_remaining)
 
         val emergencyNum = prefs.emergencyPhone ?: ""
-        if (emergencyNum.isNotEmpty()) {
-            callButton?.text = "EMERGENCY: $emergencyNum"
-            callButton?.visibility = if (prefs.isEmergencyCallEnabled) View.VISIBLE else View.GONE
+        if (emergencyNum.isNotEmpty() && prefs.isEmergencyCallEnabled) {
+            callButton?.text = "${getString(R.string.emergency_title)}: $emergencyNum"
+            callButton?.visibility = View.VISIBLE
         } else {
-            callButton?.visibility = View.GONE
+            callButton?.text = getString(R.string.emergency_title)
+            callButton?.visibility = if (prefs.isEmergencyCallEnabled) View.VISIBLE else View.GONE
         }
 
         if (prefs.isQuotesEnabled) {
-            quoteTextView?.text = getRandomQuote()
+            val quotes = resources.getStringArray(R.array.motivational_quotes)
+            if (quotes.isNotEmpty()) {
+                quoteTextView?.text = quotes.random()
+            }
             quoteTextView?.visibility = View.VISIBLE
         } else {
             quoteTextView?.visibility = View.GONE
@@ -199,7 +260,15 @@ class LockService : Service() {
                 callIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 if (ContextCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED) {
                     startActivity(callIntent)
+                } else {
+                    val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$emergencyNum"))
+                    dialIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    startActivity(dialIntent)
                 }
+            } else {
+                val dialIntent = Intent(Intent.ACTION_DIAL)
+                dialIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(dialIntent)
             }
         }
 
@@ -213,11 +282,19 @@ class LockService : Service() {
                 val h = (millisUntilFinished / 1000) / 3600
                 val m = ((millisUntilFinished / 1000) % 3600) / 60
                 val s = (millisUntilFinished / 1000) % 60
-                timerTextView?.text = if (h > 0) String.format("%02d:%02d:%02d", h, m, s) else String.format("%02d:%02d", m, s)
+                val timeStr = if (h > 0) 
+                    String.format(Locale.getDefault(), "%02d:%02d:%02d", h, m, s) 
+                else 
+                    String.format(Locale.getDefault(), "%02d:%02d", m, s)
+                timerTextView?.text = timeStr
+                
+                val progress = ((millisUntilFinished.toFloat() / totalDurationMillis) * 1000).toInt()
+                circularProgress?.progress = progress
             }
             override fun onFinish() {
                 isLocked = false
                 prefs.isLocked = false
+                playAlert()
                 stopSelf()
             }
         }.start()
@@ -260,7 +337,7 @@ class LockService : Service() {
         return params
     }
 
-    private fun hideOverlay() {
+    private fun removeOverlay() {
         if (overlayView?.parent != null) {
             try {
                 windowManager?.removeView(overlayView)
@@ -276,25 +353,14 @@ class LockService : Service() {
         }
     }
 
-    private fun getRandomQuote(): String {
-        val quotes = listOf(
-            "Focus on being productive instead of busy.",
-            "Your future self will thank you.",
-            "Deep work is the superpower of the 21st century.",
-            "Stay away from distractions, they cost you your dreams.",
-            "Success is built on focus and consistency.",
-            "One hour of deep focus is worth ten hours of distraction."
-        )
-        return quotes.random()
-    }
-
     override fun onDestroy() {
         super.onDestroy()
         isLocked = false
         prefs.isLocked = false
         handler.removeCallbacks(forceFocusRunnable)
+        handler.removeCallbacks(quoteRunnable)
         timer?.cancel()
-        hideOverlay()
+        removeOverlay()
         try { unregisterReceiver(screenReceiver) } catch (e: Exception) {}
     }
 }

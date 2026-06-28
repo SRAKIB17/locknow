@@ -2,26 +2,29 @@ package com.rakib.locknow.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
+// Core Brand Colors
 val Primary = Color(0xFFE94560)
-val OnPrimary = Color(0xFFFFFFFF)
-val PrimaryContainer = Color(0xFFFFDADA)
-
 val Secondary = Color(0xFF0F3460)
-val OnSecondary = Color(0xFFFFFFFF)
-val SecondaryContainer = Color(0xFFD6E3FF)
+val Accent = Color(0xFF533483)
 
-val Background = Color(0xFF0F0C29)
-val OnBackground = Color(0xFFE2E2E6)
+// Dark Theme Colors
+val DarkBackground = Color(0xFF0F0C29)
+val DarkSurface = Color(0xFF16213E)
+val DarkOnBackground = Color(0xFFF2F2F2)
+val DarkOnSurface = Color(0xFFE2E2E6)
 
-val Surface = Color(0xFF16213E)
-val OnSurface = Color(0xFFE2E2E6)
-val SurfaceVariant = Color(0xFF44474E)
-val OnSurfaceVariant = Color(0xFFC4C6D0)
+// Light Theme Colors
+val LightBackground = Color(0xFFF5F7FA)
+val LightSurface = Color(0xFFFFFFFF)
+val LightOnBackground = Color(0xFF1A1A2E)
+val LightOnSurface = Color(0xFF16213E)
 
-val AccentColor = Color(0xFF533483)
-val SuccessColor = Color(0xFF4CAF50)
-val ErrorColor = Color(0xFFCF6679)
+// Status Colors
+val Success = Color(0xFF4CAF50)
+val Error = Color(0xFFCF6679)
+val Warning = Color(0xFFFFB74D)
 
-val GradientTop = Color(0xFF0F0C29)
-val GradientMid = Color(0xFF302B63)
-val GradientBottom = Color(0xFF24243E)
+// Gradients - Dark
+val DarkGradient = listOf(Color(0xFF0F0C29), Color(0xFF302B63), Color(0xFF24243E))
+// Gradients - Light
+val LightGradient = listOf(Color(0xFFF5F7FA), Color(0xFFE4E9F2), Color(0xFFD6E3FF))

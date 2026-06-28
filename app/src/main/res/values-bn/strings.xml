@@ -1,0 +1,64 @@
+<resources>
+    <string name="app_name">লকনাউ প্রো</string>
+    <string name="nav_focus">ফোকাস</string>
+    <string name="nav_safety">নিরাপত্তা</string>
+    <string name="nav_settings">সেটিিংস</string>
+    <string name="status_protected">সিস্টেম সুরক্ষিত</string>
+    <string name="status_required">নিরাপত্তা প্রয়োজন</string>
+    <string name="time_remaining">অবশিষ্ট সময়</string>
+    <string name="ready_to_focus">মনোযোগ দিতে প্রস্তুত</string>
+    <string name="quick_presets">দ্রুত নির্বাচন</string>
+    <string name="custom_duration">নিজস্ব সময়</string>
+    <string name="start_lockdown">লকডাউন শুরু করুন</string>
+    <string name="security_status">নিরাপত্তা অবস্থা</string>
+    <string name="overlay_title">স্ক্রিন ওভারলে</string>
+    <string name="overlay_desc">সিস্টেম এক্সেস ব্লক করা</string>
+    <string name="admin_title">সিস্টেম অ্যাডমিন</string>
+    <string name="admin_desc">আনইনস্টল প্রতিরোধ</string>
+    <string name="access_title">অ্যাক্সেসিবিলিটি</string>
+    <string name="access_desc">বাইপাস প্রতিরোধ গার্ড</string>
+    <string name="call_perm_title">কল পারমিশন</string>
+    <string name="call_perm_desc">সরাসরি জরুরি যোগাযোগ</string>
+    <string name="emergency_title">জরুরি কন্টাক্ট</string>
+    <string name="emergency_desc">লক থাকাকালীন কেবল অনুমোদিত নম্বরে কল করা যাবে।</string>
+    <string name="add_contact">নিরাপদ নম্বর যোগ করুন</string>
+    <string name="configure_contact">কন্টাক্ট সেটআপ</string>
+    <string name="full_name">সম্পূর্ণ নাম</string>
+    <string name="relationship">সম্পর্ক</string>
+    <string name="phone_number">ফোন নম্বর</string>
+    <string name="save_settings">সেটিিংস সেভ করুন</string>
+    <string name="app_prefs">অ্যাপ পছন্দসমূহ</string>
+    <string name="enable_emergency_call">জরুরি কল চালু করুন</string>
+    <string name="show_quotes">অনুপ্রেরণামূলক উক্তি দেখান</string>
+    <string name="vibration">ভাইব্রেশন</string>
+    <string name="alert_sounds">অ্যালার্ট সাউন্ড</string>
+    <string name="interface_theme">থিম নির্বাচন</string>
+    <string name="theme_dark">ডার্ক</string>
+    <string name="theme_light">লাইট</string>
+    <string name="theme_system">সিস্টেম</string>
+    <string name="dev_info">ডেভেলপার তথ্য</string>
+    <string name="lead_architect">লিড অ্যান্ড্রয়েড আর্কিটেক্ট</string>
+    <string name="version">ভার্সন</string>
+    <string name="copyright">© ২০২৬ সর্বস্বত্ব সংরক্ষিত</string>
+    <string name="language">ভাষা</string>
+    <string name="lang_en">English</string>
+    <string name="lang_bn">বাংলা</string>
+    <string name="locked_desc">ফোকাস মোড সক্রিয়। ডিভাইস সীমাবদ্ধ।</string>
+
+    <string-array name="motivational_quotes">
+        <item>ব্যস্ত থাকার চেয়ে উৎপাদনশীল হওয়ার দিকে মনোযোগ দিন।</item>
+        <item>আপনার ভবিষ্যৎ সত্তা আপনাকে ধন্যবাদ জানাবে।</item>
+        <item>গভীর মনোযোগ হলো একবিংশ শতাব্দীর সুপারপাওয়ার।</item>
+        <item>বিভ্রান্তি থেকে দূরে থাকুন, এগুলো আপনার স্বপ্নের ক্ষতি করে।</item>
+        <item>সাফল্য মনোযোগ এবং ধারাবাহিকতার ওপর নির্ভর করে।</item>
+        <item>এক ঘণ্টার গভীর মনোযোগ দশ ঘণ্টার বিভ্রান্তিকর কাজের চেয়ে ভালো।</item>
+        <item>শৃঙ্খলাই হলো বর্তমানের ইচ্ছা আর লক্ষ্যের মধ্যে লড়াই।</item>
+        <item>শৃঙ্খলার কষ্ট অনুশোচনার কষ্টের চেয়ে অনেক কম।</item>
+        <item>আপনার বিভ্রান্তিকে ক্ষুধার্ত রাখুন এবং ফোকাসকে পুষ্ট করুন।</item>
+        <item>আজকের পরিশ্রম আপনার আগামীর ভিত্তি।</item>
+        <item>মনোযোগ মানেই হলো অপ্রয়োজনীয় কাজগুলোকে \'না\' বলা।</item>
+        <item>নিজের ওপর নিয়ন্ত্রণই হলো আসল স্বাধীনতা।</item>
+        <item>ডোপামিন নয়, শৃঙ্খলায় আসক্ত হন।</item>
+        <item>সাফল্য কোনো দুর্ঘটনা নয়, এটি কঠোর পরিশ্রমের ফল।</item>
+    </string-array>
+</resources>

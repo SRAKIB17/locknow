@@ -3,12 +3,14 @@ package com.rakib.locknow.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.rakib.locknow.R
 import com.rakib.locknow.data.PrefsManager
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import java.util.*
+import kotlin.time.Duration.Companion.seconds
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val prefs = PrefsManager(application)
@@ -24,13 +26,36 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _emergencyPhone = MutableStateFlow(prefs.emergencyPhone ?: "")
     val emergencyPhone = _emergencyPhone.asStateFlow()
+
+    private val _emergencyRelation = MutableStateFlow(prefs.emergencyRelation ?: "")
+    val emergencyRelation = _emergencyRelation.asStateFlow()
     
-    // Additional settings
     private val _isEmergencyCallEnabled = MutableStateFlow(prefs.isEmergencyCallEnabled)
     val isEmergencyCallEnabled = _isEmergencyCallEnabled.asStateFlow()
 
+    private val _isQuotesEnabled = MutableStateFlow(prefs.isQuotesEnabled)
+    val isQuotesEnabled = _isQuotesEnabled.asStateFlow()
+
+    private val _isVibrationEnabled = MutableStateFlow(prefs.isVibrationEnabled)
+    val isVibrationEnabled = _isVibrationEnabled.asStateFlow()
+
+    private val _isSoundEnabled = MutableStateFlow(prefs.isSoundEnabled)
+    val isSoundEnabled = _isSoundEnabled.asStateFlow()
+
+    private val _themeMode = MutableStateFlow(prefs.themeMode)
+    val themeMode = _themeMode.asStateFlow()
+
+    private val _language = MutableStateFlow(prefs.language)
+    val language = _language.asStateFlow()
+
+    private val _currentQuote = MutableStateFlow("")
+    val currentQuote = _currentQuote.asStateFlow()
+
+    private var quoteJob: Job? = null
+
     init {
         startTimerUpdate()
+        startQuoteRotation()
     }
 
     private fun startTimerUpdate() {
@@ -43,12 +68,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _isLocked.value = true
                 } else {
                     _remainingTime.value = 0L
-                    _isLocked.value = false
-                    if (prefs.isLocked) {
+                    if (_isLocked.value) {
+                        _isLocked.value = false
                         prefs.isLocked = false
                     }
                 }
-                delay(1000)
+                delay(1.seconds)
+            }
+        }
+    }
+
+    private fun startQuoteRotation() {
+        quoteJob?.cancel()
+        quoteJob = viewModelScope.launch {
+            while (true) {
+                if (prefs.isQuotesEnabled) {
+                    val quotes = getApplication<Application>().resources.getStringArray(R.array.motivational_quotes)
+                    if (quotes.isNotEmpty()) {
+                        _currentQuote.value = quotes.random()
+                    }
+                } else {
+                    _currentQuote.value = ""
+                }
+                delay(3.seconds)
             }
         }
     }
@@ -61,6 +103,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         prefs.emergencyNotes = notes
         
         _emergencyName.value = name
+        _emergencyRelation.value = relation
         _emergencyPhone.value = phone
     }
     
@@ -72,6 +115,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         prefs.emergencyNotes = ""
         
         _emergencyName.value = ""
+        _emergencyRelation.value = ""
         _emergencyPhone.value = ""
     }
 
@@ -80,5 +124,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _isEmergencyCallEnabled.value = enabled
     }
 
-    // Other settings toggles...
+    fun toggleQuotes(enabled: Boolean) {
+        prefs.isQuotesEnabled = enabled
+        _isQuotesEnabled.value = enabled
+        if (!enabled) _currentQuote.value = "" else startQuoteRotation()
+    }
+
+    fun toggleVibration(enabled: Boolean) {
+        prefs.isVibrationEnabled = enabled
+        _isVibrationEnabled.value = enabled
+    }
+
+    fun toggleSound(enabled: Boolean) {
+        prefs.isSoundEnabled = enabled
+        _isSoundEnabled.value = enabled
+    }
+
+    fun setThemeMode(mode: Int) {
+        prefs.themeMode = mode
+        _themeMode.value = mode
+    }
+
+    fun setLanguage(lang: String) {
+        prefs.language = lang
+        _language.value = lang
+        startQuoteRotation() // Refresh quote with new language
+    }
 }

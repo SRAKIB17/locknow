@@ -49,4 +49,12 @@ class PrefsManager(context: Context) {
     var isSoundEnabled: Boolean
         get() = prefs.getBoolean("SETTING_SOUND", true)
         set(value) = prefs.edit().putBoolean("SETTING_SOUND", value).apply()
+
+    var themeMode: Int
+        get() = prefs.getInt("SETTING_THEME_MODE", 0) // 0: Dark, 1: Light, 2: System
+        set(value) = prefs.edit().putInt("SETTING_THEME_MODE", value).apply()
+
+    var language: String
+        get() = prefs.getString("SETTING_LANGUAGE", "en") ?: "en"
+        set(value) = prefs.edit().putString("SETTING_LANGUAGE", value).apply()
 }

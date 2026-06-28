@@ -13,16 +13,21 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
+import androidx.compose.material.icons.automirrored.filled.PhoneCallback
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -34,6 +39,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.res.stringArrayResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -45,7 +52,9 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.rakib.locknow.ui.theme.LockNowTheme
+import com.rakib.locknow.data.PrefsManager
+import com.rakib.locknow.ui.theme.*
+import com.rakib.locknow.utils.LocaleHelper
 import com.rakib.locknow.viewmodel.MainViewModel
 import java.text.SimpleDateFormat
 import java.util.*
@@ -54,6 +63,12 @@ class MainActivity : ComponentActivity() {
     private lateinit var devicePolicyManager: DevicePolicyManager
     private lateinit var adminComponent: ComponentName
 
+    override fun attachBaseContext(newBase: Context) {
+        val prefs = PrefsManager(newBase)
+        val lang = prefs.language
+        super.attachBaseContext(LocaleHelper.wrap(newBase, lang))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         devicePolicyManager = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
@@ -61,8 +76,18 @@ class MainActivity : ComponentActivity() {
 
         enableEdgeToEdge()
         setContent {
-            LockNowTheme {
+            val viewModel: MainViewModel = viewModel()
+            val themeMode by viewModel.themeMode.collectAsState()
+            
+            val isDarkTheme = when(themeMode) {
+                0 -> true
+                1 -> false
+                else -> isSystemInDarkTheme()
+            }
+
+            LockNowTheme(darkTheme = isDarkTheme) {
                 MainContainer(
+                    viewModel = viewModel,
                     onEnableAdmin = { requestDeviceAdmin() },
                     onEnableAccessibility = { requestAccessibility() },
                     onEnableOverlay = { requestOverlay() },
@@ -85,7 +110,7 @@ class MainActivity : ComponentActivity() {
     private fun requestDeviceAdmin() {
         val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
             putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent)
-            putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "Protects the app from being uninstalled during focus mode.")
+            putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "Protects the app from being uninstalled.")
         }
         startActivity(intent)
     }
@@ -107,10 +132,10 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainContainer(
-    viewModel: MainViewModel = viewModel(),
+    viewModel: MainViewModel,
     onEnableAdmin: () -> Unit,
     onEnableAccessibility: () -> Unit,
     onEnableOverlay: () -> Unit,
@@ -124,61 +149,50 @@ fun MainContainer(
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text("LockNow Pro", fontWeight = FontWeight.Black) },
+                title = { 
+                    Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Black, letterSpacing = (-1).sp)) 
+                },
                 actions = {
                     IconButton(onClick = { showAboutSheet = true }) {
-                        Icon(Icons.Outlined.Info, contentDescription = "About")
+                        Icon(Icons.Outlined.Info, contentDescription = "About", tint = MaterialTheme.colorScheme.primary)
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                     containerColor = Color.Transparent,
-                    titleContentColor = Color.White,
-                    actionIconContentColor = Color.White
+                    titleContentColor = MaterialTheme.colorScheme.onBackground
                 )
             )
         },
         bottomBar = {
             NavigationBar(
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
-                contentColor = Color.White
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+                tonalElevation = 8.dp
             ) {
-                NavigationBarItem(
-                    selected = currentRoute == "home",
-                    onClick = { 
-                        if (currentRoute != "home") {
-                            navController.navigate("home") {
-                                popUpTo("home") { inclusive = true }
-                            }
-                        }
-                    },
-                    icon = { Icon(Icons.Default.Home, null) },
-                    label = { Text("Home") }
-                )
-                NavigationBarItem(
-                    selected = currentRoute == "emergency",
-                    onClick = { 
-                        if (currentRoute != "emergency") {
-                            navController.navigate("emergency") 
-                        }
-                    },
-                    icon = { Icon(Icons.Default.ContactPhone, null) },
-                    label = { Text("Emergency") }
-                )
-                NavigationBarItem(
-                    selected = currentRoute == "settings",
-                    onClick = { 
-                        if (currentRoute != "settings") {
-                            navController.navigate("settings") 
-                        }
-                    },
-                    icon = { Icon(Icons.Default.Settings, null) },
-                    label = { Text("Settings") }
-                )
+                listOf(
+                    Triple("home", Icons.Default.Timer, R.string.nav_focus),
+                    Triple("emergency", Icons.Default.HealthAndSafety, R.string.nav_safety),
+                    Triple("settings", Icons.Default.Tune, R.string.nav_settings)
+                ).forEach { (route, icon, labelRes) ->
+                    NavigationBarItem(
+                        selected = currentRoute == route,
+                        onClick = { if (currentRoute != route) navController.navigate(route) { popUpTo("home") } },
+                        icon = { Icon(icon, null) },
+                        label = { Text(stringResource(labelRes), style = MaterialTheme.typography.labelMedium) }
+                    )
+                }
             }
         },
-        containerColor = Color(0xFF0F0C29)
+        containerColor = MaterialTheme.colorScheme.background
     ) { innerPadding ->
-        Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
+        val isDark = MaterialTheme.colorScheme.background == DarkBackground
+        val backgroundBrush = Brush.verticalGradient(if (isDark) DarkGradient else LightGradient)
+
+        Box(
+            modifier = Modifier
+                .padding(innerPadding)
+                .fillMaxSize()
+                .background(backgroundBrush)
+        ) {
             NavHost(navController = navController, startDestination = "home") {
                 composable("home") { HomeScreen(viewModel, onEnableAdmin, onEnableAccessibility, onEnableOverlay, onStartLock) }
                 composable("emergency") { EmergencyScreen(viewModel) }
@@ -205,11 +219,13 @@ fun HomeScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val remainingTime by viewModel.remainingTime.collectAsState()
     val isLocked by viewModel.isLocked.collectAsState()
+    val quote by viewModel.currentQuote.collectAsState()
     
     var isAdminActive by remember { mutableStateOf(false) }
     var isAccessibilityEnabled by remember { mutableStateOf(false) }
     var isOverlayAllowed by remember { mutableStateOf(false) }
-    var selectedDuration by remember { mutableStateOf(25) }
+    
+    var selectedDuration by remember { mutableIntStateOf(25) }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -229,74 +245,132 @@ fun HomeScreen(
         modifier = Modifier.fillMaxSize().padding(24.dp).verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(
-            SimpleDateFormat("EEEE, MMMM dd", Locale.getDefault()).format(Date()),
-            color = Color.Gray,
-            fontSize = 14.sp
-        )
-        Text(
-            SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date()),
-            color = Color.White,
-            fontSize = 48.sp,
-            fontWeight = FontWeight.ExtraLight
-        )
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        Card(
-            modifier = Modifier.size(260.dp),
-            shape = CircleShape,
-            colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.05f)),
-            border = androidx.compose.foundation.BorderStroke(4.dp, if (isLocked) Color(0xFFE94560) else Color.Gray.copy(alpha = 0.3f))
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        Surface(
+            modifier = Modifier.clip(RoundedCornerShape(32.dp)),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.3f)
         ) {
-            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.Shield, null, modifier = Modifier.size(16.dp), tint = Success)
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    if (isAdminActive && isAccessibilityEnabled && isOverlayAllowed) stringResource(R.string.status_protected) else stringResource(R.string.status_required),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (isAdminActive && isAccessibilityEnabled && isOverlayAllowed) Success else Primary
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(48.dp))
+
+        Box(contentAlignment = Alignment.Center) {
+            val infiniteTransition = rememberInfiniteTransition(label = "")
+            val glowScale by infiniteTransition.animateFloat(
+                initialValue = 0.8f,
+                targetValue = 1.1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(2000, easing = LinearEasing),
+                    repeatMode = RepeatMode.Reverse
+                ), label = ""
+            )
+
+            if (isLocked) {
+                Box(
+                    modifier = Modifier
+                        .size(240.dp)
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f * glowScale), CircleShape)
+                )
+            }
+
+            CircularProgressIndicator(
+                progress = { if (isLocked) (remainingTime.toFloat() / (selectedDuration * 60000f)).coerceIn(0f, 1f) else 1f },
+                modifier = Modifier.size(260.dp),
+                color = if (isLocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                strokeWidth = 8.dp,
+                strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
+            )
+
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    if (isLocked) formatTime(remainingTime) else "$selectedDuration:00",
+                    style = MaterialTheme.typography.displayLarge.copy(fontWeight = FontWeight.Light, color = MaterialTheme.colorScheme.onBackground)
+                )
+                Text(
+                    if (isLocked) stringResource(R.string.time_remaining) else stringResource(R.string.ready_to_focus),
+                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 3.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(48.dp))
+
+        Box(modifier = Modifier.height(60.dp), contentAlignment = Alignment.Center) {
+            AnimatedContent(
+                targetState = quote,
+                transitionSpec = {
+                    fadeIn(animationSpec = tween(1000)) togetherWith fadeOut(animationSpec = tween(1000))
+                }, label = ""
+            ) { targetQuote ->
+                if (targetQuote.isNotEmpty()) {
                     Text(
-                        if (isLocked) formatTime(remainingTime) else "${selectedDuration}:00",
-                        fontSize = 56.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    Text(
-                        if (isLocked) "REMAINING" else "READY TO FOCUS",
-                        fontSize = 12.sp,
-                        letterSpacing = 2.sp,
-                        color = if (isLocked) Color(0xFFE94560) else Color.Gray
+                        "\"$targetQuote\"",
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        textAlign = TextAlign.Center,
+                        fontWeight = FontWeight.Medium
                     )
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(40.dp))
+        Spacer(modifier = Modifier.height(48.dp))
 
         if (!isLocked) {
+            Text(stringResource(R.string.quick_presets), modifier = Modifier.align(Alignment.Start), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+            Spacer(modifier = Modifier.height(12.dp))
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                listOf(15, 30, 60, 120, 180, 360, 720, 1440).forEach { mins ->
-                    FilterChip(
-                        selected = selectedDuration == mins,
+                listOf(15, 25, 30, 60, 120, 180).forEach { mins ->
+                    SuggestionChip(
                         onClick = { selectedDuration = mins },
-                        label = { Text(if (mins < 60) "${mins}m" else "${mins/60}h") },
-                        modifier = Modifier.padding(4.dp),
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = Color(0xFFE94560),
-                            selectedLabelColor = Color.White
+                        label = { Text("${mins}m") },
+                        border = SuggestionChipDefaults.suggestionChipBorder(
+                            enabled = true,
+                            borderColor = if (selectedDuration == mins) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.2f)
+                        ),
+                        colors = SuggestionChipDefaults.suggestionChipColors(
+                            containerColor = if (selectedDuration == mins) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else Color.Transparent
                         )
                     )
                 }
             }
             
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(32.dp))
             
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { if (selectedDuration > 5) selectedDuration -= 5 }) {
-                    Icon(Icons.Default.Remove, null, tint = Color.White)
-                }
-                Text("Custom: $selectedDuration min", color = Color.White, fontWeight = FontWeight.Bold)
-                IconButton(onClick = { selectedDuration += 5 }) {
-                    Icon(Icons.Default.Add, null, tint = Color.White)
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.03f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(stringResource(R.string.custom_duration), modifier = Modifier.padding(start = 8.dp), color = MaterialTheme.colorScheme.onBackground)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { if (selectedDuration > 1) selectedDuration -= 1 }) {
+                            Icon(Icons.Default.RemoveCircleOutline, null, tint = MaterialTheme.colorScheme.primary)
+                        }
+                        Text("$selectedDuration", color = MaterialTheme.colorScheme.onBackground, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                        IconButton(onClick = { if (selectedDuration < 1440) selectedDuration += 1 }) {
+                            Icon(Icons.Default.AddCircleOutline, null, tint = MaterialTheme.colorScheme.primary)
+                        }
+                    }
                 }
             }
 
@@ -307,46 +381,58 @@ fun HomeScreen(
                     if (isAdminActive && isAccessibilityEnabled && isOverlayAllowed) {
                         onStartLock(selectedDuration)
                     } else {
-                        Toast.makeText(context, "Please enable all protections", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Setup security layer first!", Toast.LENGTH_SHORT).show()
                     }
                 },
-                modifier = Modifier.fillMaxWidth().height(64.dp),
-                shape = RoundedCornerShape(20.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE94560))
+                modifier = Modifier.fillMaxWidth().height(72.dp),
+                shape = RoundedCornerShape(24.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                elevation = ButtonDefaults.buttonElevation(defaultElevation = 8.dp)
             ) {
                 Icon(Icons.Default.Lock, null)
                 Spacer(Modifier.width(12.dp))
-                Text("START LOCKDOWN", fontSize = 18.sp, fontWeight = FontWeight.Black)
+                Text(stringResource(R.string.start_lockdown), style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black))
             }
         } else {
             Text(
-                "Locked Mode Active\nNo escape until timer ends.",
-                color = Color.Gray,
-                textAlign = TextAlign.Center,
-                fontSize = 14.sp
+                stringResource(R.string.locked_desc),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                textAlign = TextAlign.Center
             )
         }
         
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(40.dp))
         
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
-            SmallStatusItem("Admin", isAdminActive, onEnableAdmin)
-            SmallStatusItem("Access", isAccessibilityEnabled, onEnableAccessibility)
-            SmallStatusItem("Overlay", isOverlayAllowed, onEnableOverlay)
+        if (!isAdminActive || !isAccessibilityEnabled || !isOverlayAllowed) {
+            Text(stringResource(R.string.security_status), modifier = Modifier.align(Alignment.Start), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+            Spacer(modifier = Modifier.height(12.dp))
+            SetupCard(stringResource(R.string.overlay_title), stringResource(R.string.overlay_desc), isOverlayAllowed, onEnableOverlay)
+            SetupCard(stringResource(R.string.admin_title), stringResource(R.string.admin_desc), isAdminActive, onEnableAdmin)
+            SetupCard(stringResource(R.string.access_title), stringResource(R.string.access_desc), isAccessibilityEnabled, onEnableAccessibility)
         }
     }
 }
 
 @Composable
-fun SmallStatusItem(label: String, active: Boolean, onClick: () -> Unit) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable(enabled = !active) { onClick() }) {
-        Icon(
-            if (active) Icons.Default.CheckCircle else Icons.Default.Error,
-            null,
-            tint = if (active) Color.Green else Color.Red,
-            modifier = Modifier.size(24.dp)
-        )
-        Text(label, fontSize = 10.sp, color = Color.Gray)
+fun SetupCard(title: String, desc: String, active: Boolean, onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable(enabled = !active) { onClick() },
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, if (active) Success.copy(alpha = 0.2f) else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.1f))
+    ) {
+        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(modifier = Modifier.size(40.dp).background(if (active) Success.copy(alpha = 0.1f) else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.05f), CircleShape), contentAlignment = Alignment.Center) {
+                Icon(if (active) Icons.Default.Check else Icons.Default.PriorityHigh, null, tint = if (active) Success else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f), modifier = Modifier.size(18.dp))
+            }
+            Spacer(Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onBackground)
+                Text(desc, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+            }
+            if (!active) Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, null, modifier = Modifier.size(12.dp), tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f))
+        }
     }
 }
 
@@ -354,49 +440,59 @@ fun SmallStatusItem(label: String, active: Boolean, onClick: () -> Unit) {
 fun EmergencyScreen(viewModel: MainViewModel) {
     val name by viewModel.emergencyName.collectAsState()
     val phone by viewModel.emergencyPhone.collectAsState()
+    val relation by viewModel.emergencyRelation.collectAsState()
     
-    var editName by remember { mutableStateOf("") }
-    var editRelation by remember { mutableStateOf("") }
-    var editPhone by remember { mutableStateOf("") }
+    var editName by remember { mutableStateOf(name) }
+    var editRelation by remember { mutableStateOf(relation) }
+    var editPhone by remember { mutableStateOf(phone) }
     var showDialog by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
-        Text("Emergency Contact", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.White)
-        Text("Used only during active lockdown for emergency calls.", fontSize = 12.sp, color = Color.Gray)
+        Text(stringResource(R.string.emergency_title), style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.onBackground)
+        Text(stringResource(R.string.emergency_desc), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
         
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(32.dp))
         
         if (name.isNotEmpty()) {
-            Card(
+            Surface(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.05f))
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
             ) {
-                Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(modifier = Modifier.size(50.dp).background(Color(0xFFE94560), CircleShape), contentAlignment = Alignment.Center) {
-                        Text(name.take(1).uppercase(), color = Color.White, fontWeight = FontWeight.Bold)
+                Row(modifier = Modifier.padding(24.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(modifier = Modifier.size(64.dp).background(MaterialTheme.colorScheme.primary, CircleShape), contentAlignment = Alignment.Center) {
+                        Text(name.take(1).uppercase(), style = MaterialTheme.typography.headlineSmall, color = Color.White)
                     }
-                    Spacer(Modifier.width(16.dp))
+                    Spacer(Modifier.width(20.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(name, color = Color.White, fontWeight = FontWeight.Bold)
-                        Text(phone, color = Color.Gray)
+                        Text(name, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onBackground)
+                        Text("$relation • $phone", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
                     }
                     IconButton(onClick = { viewModel.deleteEmergencyContact() }) {
-                        Icon(Icons.Default.Delete, null, tint = Color.Red)
+                        Icon(Icons.Default.DeleteSweep, null, tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f))
                     }
                 }
             }
         } else {
-            Button(
-                onClick = { showDialog = true },
-                modifier = Modifier.fillMaxWidth().height(100.dp),
-                shape = RoundedCornerShape(20.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.05f)),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color.Gray.copy(alpha = 0.3f))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp)
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.03f))
+                    .clickable { 
+                        editName = ""
+                        editRelation = ""
+                        editPhone = ""
+                        showDialog = true 
+                    },
+                contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.Add, null, tint = Color.White)
-                Spacer(Modifier.width(8.dp))
-                Text("Add Emergency Contact", color = Color.White)
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Default.AddCircleOutline, null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f))
+                    Spacer(Modifier.height(12.dp))
+                    Text(stringResource(R.string.add_contact), color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f))
+                }
             }
         }
     }
@@ -404,24 +500,21 @@ fun EmergencyScreen(viewModel: MainViewModel) {
     if (showDialog) {
         AlertDialog(
             onDismissRequest = { showDialog = false },
-            title = { Text("Add Emergency Contact") },
+            title = { Text(stringResource(R.string.configure_contact)) },
             text = {
                 Column {
-                    OutlinedTextField(value = editName, onValueChange = { editName = it }, label = { Text("Full Name") }, modifier = Modifier.padding(bottom = 8.dp))
-                    OutlinedTextField(value = editRelation, onValueChange = { editRelation = it }, label = { Text("Relationship") }, modifier = Modifier.padding(bottom = 8.dp))
-                    OutlinedTextField(value = editPhone, onValueChange = { editPhone = it }, label = { Text("Phone Number") })
+                    OutlinedTextField(value = editName, onValueChange = { editName = it }, label = { Text(stringResource(R.string.full_name)) }, modifier = Modifier.padding(bottom = 8.dp))
+                    OutlinedTextField(value = editRelation, onValueChange = { editRelation = it }, label = { Text(stringResource(R.string.relationship)) }, modifier = Modifier.padding(bottom = 8.dp))
+                    OutlinedTextField(value = editPhone, onValueChange = { editPhone = it }, label = { Text(stringResource(R.string.phone_number)) })
                 }
             },
             confirmButton = {
-                TextButton(onClick = {
+                Button(onClick = {
                     if (editName.isNotEmpty() && editPhone.isNotEmpty()) {
                         viewModel.saveEmergencyContact(editName, editRelation, editPhone, "", "")
                         showDialog = false
                     }
-                }) { Text("Save") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDialog = false }) { Text("Cancel") }
+                }) { Text(stringResource(R.string.save_settings)) }
             }
         )
     }
@@ -429,40 +522,103 @@ fun EmergencyScreen(viewModel: MainViewModel) {
 
 @Composable
 fun SettingsScreen(viewModel: MainViewModel) {
+    val context = LocalContext.current
     val isEmergencyEnabled by viewModel.isEmergencyCallEnabled.collectAsState()
+    val isQuotesEnabled by viewModel.isQuotesEnabled.collectAsState()
+    val isVibrationEnabled by viewModel.isVibrationEnabled.collectAsState()
+    val isSoundEnabled by viewModel.isSoundEnabled.collectAsState()
+    val themeMode by viewModel.themeMode.collectAsState()
+    val language by viewModel.language.collectAsState()
     
-    Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
-        Text("Settings", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.White)
-        Spacer(modifier = Modifier.height(24.dp))
+    Column(modifier = Modifier.fillMaxSize().padding(24.dp).verticalScroll(rememberScrollState())) {
+        Text(stringResource(R.string.app_prefs), style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.onBackground)
+        Spacer(modifier = Modifier.height(32.dp))
         
-        SettingsToggle("Enable Emergency Call", isEmergencyEnabled) { viewModel.toggleEmergencyCall(it) }
-        SettingsToggle("Motivational Quotes", true) {}
-        SettingsToggle("Vibration", true) {}
-        SettingsToggle("Sound", true) {}
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.4f))
+        ) {
+            Column(modifier = Modifier.padding(8.dp)) {
+                SettingsToggleItem(Icons.AutoMirrored.Filled.PhoneCallback, stringResource(R.string.enable_emergency_call), isEmergencyEnabled) { viewModel.toggleEmergencyCall(it) }
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.05f))
+                SettingsToggleItem(Icons.Default.FormatQuote, stringResource(R.string.show_quotes), isQuotesEnabled) { viewModel.toggleQuotes(it) }
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.05f))
+                SettingsToggleItem(Icons.Default.Vibration, stringResource(R.string.vibration), isVibrationEnabled) { viewModel.toggleVibration(it) }
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.05f))
+                SettingsToggleItem(Icons.Default.NotificationsActive, stringResource(R.string.alert_sounds), isSoundEnabled) { viewModel.toggleSound(it) }
+            }
+        }
         
         Spacer(modifier = Modifier.height(32.dp))
-        Text("Theme", color = Color.Gray, fontSize = 12.sp)
-        Row(modifier = Modifier.padding(top = 8.dp)) {
-            FilterChip(selected = true, onClick = {}, label = { Text("Dark") }, modifier = Modifier.padding(end = 8.dp))
-            FilterChip(selected = false, onClick = {}, label = { Text("Light") }, modifier = Modifier.padding(end = 8.dp))
-            FilterChip(selected = false, onClick = {}, label = { Text("System") })
+        Text(stringResource(R.string.interface_theme), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f), letterSpacing = 2.sp)
+        Spacer(modifier = Modifier.height(12.dp))
+        
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.4f))
+        ) {
+            Row(modifier = Modifier.padding(8.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                listOf(stringResource(R.string.theme_dark), stringResource(R.string.theme_light), stringResource(R.string.theme_system)).forEachIndexed { index, label ->
+                    FilterChip(
+                        selected = themeMode == index,
+                        onClick = { viewModel.setThemeMode(index) },
+                        label = { Text(label) },
+                        modifier = Modifier.padding(4.dp),
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primary,
+                            selectedLabelColor = Color.White
+                        )
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(32.dp))
+        Text(stringResource(R.string.language), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f), letterSpacing = 2.sp)
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.4f))
+        ) {
+            Row(modifier = Modifier.padding(8.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                listOf("en" to stringResource(R.string.lang_en), "bn" to stringResource(R.string.lang_bn)).forEach { (code, label) ->
+                    FilterChip(
+                        selected = language == code,
+                        onClick = { 
+                            viewModel.setLanguage(code)
+                            // Activity needs restart to apply context wrapper change
+                            (context as? MainActivity)?.recreate()
+                        },
+                        label = { Text(label) },
+                        modifier = Modifier.padding(4.dp),
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primary,
+                            selectedLabelColor = Color.White
+                        )
+                    )
+                }
+            }
         }
     }
 }
 
 @Composable
-fun SettingsToggle(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+fun SettingsToggleItem(icon: ImageVector, label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+        modifier = Modifier.fillMaxWidth().padding(16.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(label, color = Color.White)
-        Switch(
-            checked = checked, 
-            onCheckedChange = onCheckedChange,
-            colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFFE94560))
-        )
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+            Icon(icon, null, modifier = Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(16.dp))
+            Text(label, color = MaterialTheme.colorScheme.onBackground, style = MaterialTheme.typography.bodyLarge)
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange, colors = SwitchDefaults.colors(checkedThumbColor = MaterialTheme.colorScheme.primary))
     }
 }
 
@@ -472,58 +628,55 @@ fun AboutBottomSheet(onDismiss: () -> Unit) {
     val uriHandler = LocalUriHandler.current
     val context = LocalContext.current
     
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Color(0xFF16213E)) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 16.dp) {
         Column(modifier = Modifier.fillMaxWidth().padding(24.dp).padding(bottom = 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Developer Info", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Color.White)
-            Spacer(Modifier.height(24.dp))
-            
-            Box(modifier = Modifier.size(80.dp).clip(CircleShape).background(Color(0xFFE94560).copy(alpha = 0.1f)), contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.Person, null, modifier = Modifier.size(40.dp), tint = Color(0xFFE94560))
+            Surface(modifier = Modifier.size(100.dp), shape = CircleShape, color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary)) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.DeveloperMode, null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
+                }
             }
             
+            Spacer(Modifier.height(24.dp))
+            Text("RAKIBUL ISLAM", style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Black))
+            Text(stringResource(R.string.lead_architect), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
+            
+            Spacer(modifier = Modifier.height(32.dp))
+            
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                AboutActionCard(Icons.Default.Phone, "Call", Modifier.weight(1f)) { 
+                    context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:+8801873989651")))
+                }
+                AboutActionCard(Icons.Default.Link, "GitHub", Modifier.weight(1f)) { uriHandler.openUri("https://github.com/srakib17") }
+                AboutActionCard(Icons.Default.Facebook, "Social", Modifier.weight(1f)) { uriHandler.openUri("https://www.facebook.com/srakib17") }
+            }
+            
+            Spacer(modifier = Modifier.height(40.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.05f))
             Spacer(Modifier.height(16.dp))
-            Text("RAKIBUL ISLAM", fontSize = 24.sp, fontWeight = FontWeight.Black, color = Color.White)
-            Text("Android Developer", color = Color.Gray, fontSize = 14.sp)
-            
-            Spacer(Modifier.height(24.dp))
-            
-            AboutItem(Icons.Default.Phone, "+8801873989651") { 
-                val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:+8801873989651"))
-                context.startActivity(intent)
-            }
-            AboutItem(Icons.Default.Link, "GitHub Profile") { uriHandler.openUri("https://github.com/srakib17") }
-            AboutItem(Icons.Default.Facebook, "Facebook Profile") { uriHandler.openUri("https://www.facebook.com/srakib17") }
-            
-            Spacer(Modifier.height(32.dp))
-            Text("Version 1.0.0 (Build 1)", color = Color.Gray, fontSize = 12.sp)
-            Text("© 2026 Rakibul Islam", color = Color.Gray, fontSize = 12.sp)
+            Text("${stringResource(R.string.version)} 1.0.0 (Build 126)", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f), style = MaterialTheme.typography.labelSmall)
+            Text(stringResource(R.string.copyright), color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f), style = MaterialTheme.typography.labelSmall)
         }
     }
 }
 
 @Composable
-fun AboutItem(icon: ImageVector, text: String, onClick: () -> Unit) {
+fun AboutActionCard(icon: ImageVector, label: String, modifier: Modifier, onClick: () -> Unit) {
     Surface(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { onClick() },
+        modifier = modifier.clickable { onClick() },
         shape = RoundedCornerShape(16.dp),
-        color = Color.White.copy(alpha = 0.05f)
+        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.05f)
     ) {
-        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, null, tint = Color(0xFFE94560), modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(16.dp))
-            Text(text, color = Color.White, fontSize = 14.sp)
+        Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(icon, null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.height(8.dp))
+            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onBackground)
         }
     }
 }
 
 private fun formatTime(millis: Long): String {
-    val totalSeconds = millis / 1000
-    val hours = totalSeconds / 3600
-    val minutes = (totalSeconds % 3600) / 60
-    val seconds = totalSeconds % 60
-    return if (hours > 0) {
-        String.format(Locale.getDefault(), "%02d:%02d:%02d", hours, minutes, seconds)
-    } else {
-        String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
-    }
+    val h = millis / 3600000
+    val m = (millis % 3600000) / 60000
+    val s = (millis % 60000) / 1000
+    return if (h > 0) String.format(Locale.getDefault(), "%02d:%02d:%02d", h, m, s) else String.format(Locale.getDefault(), "%02d:%02d", m, s)
 }
