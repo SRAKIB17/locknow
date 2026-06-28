@@ -41,6 +41,11 @@ class LockService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val durationMinutes = intent?.getIntExtra("DURATION_MINUTES", 25) ?: 25
         val durationMillis = durationMinutes * 60 * 1000L
+        
+        val endTime = System.currentTimeMillis() + durationMillis
+        getSharedPreferences("LockNowPrefs", Context.MODE_PRIVATE).edit()
+            .putLong("LOCK_END_TIME", endTime)
+            .apply()
 
         isLocked = true
         showNotification()

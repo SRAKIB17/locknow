@@ -2,7 +2,16 @@
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#FF121212">
+    android:background="#1A1A2E">
+
+    <!-- Decorative Glow -->
+    <View
+        android:layout_width="400dp"
+        android:layout_height="400dp"
+        android:layout_centerInParent="true"
+        android:background="@android:drawable/presence_online"
+        android:alpha="0.05"
+        android:backgroundTint="#E94560" />
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -13,19 +22,20 @@
         android:padding="32dp">
 
         <ImageView
-            android:layout_width="80dp"
-            android:layout_height="80dp"
+            android:layout_width="64dp"
+            android:layout_height="64dp"
             android:src="@android:drawable/ic_lock_lock"
             android:contentDescription="Locked"
-            android:tint="#FFFFFF" />
+            android:tint="#E94560" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="24dp"
-            android:text="Focus Mode Active"
-            android:textColor="#FFFFFF"
-            android:textSize="28sp"
+            android:text="LOCKDOWN ACTIVE"
+            android:textColor="#E94560"
+            android:textSize="14sp"
+            android:letterSpacing="0.2"
             android:textStyle="bold" />
 
         <TextView
@@ -33,41 +43,49 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="00:00"
-            android:textColor="#BB86FC"
-            android:textSize="64sp"
-            android:textStyle="bold" />
+            android:text="25:00"
+            android:textColor="#FFFFFF"
+            android:textSize="80sp"
+            android:fontFamily="sans-serif-condensed-light" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="REMAINING FOCUS TIME"
+            android:textColor="#4E4E6A"
+            android:textSize="12sp"
+            android:letterSpacing="0.1" />
 
         <View
-            android:layout_width="60dp"
+            android:layout_width="40dp"
             android:layout_height="2dp"
-            android:layout_marginTop="32dp"
-            android:background="#33FFFFFF" />
+            android:layout_marginTop="48dp"
+            android:background="#E94560" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="32dp"
             android:gravity="center"
-            android:text="Stay away from distractions.\nYour future self will thank you."
+            android:text="Your phone is a tool, not a trap.\nFinish what you started."
             android:textColor="#99FFFFFF"
             android:textSize="16sp"
-            android:lineSpacingExtra="4dp" />
+            android:lineSpacingExtra="6dp" />
 
     </LinearLayout>
 
     <Button
         android:id="@+id/callButton"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
         android:layout_alignParentBottom="true"
-        android:layout_centerHorizontal="true"
-        android:layout_marginBottom="64dp"
-        android:backgroundTint="#33FFFFFF"
-        android:paddingStart="32dp"
-        android:paddingEnd="32dp"
-        android:text="Emergency Call"
-        android:textAllCaps="false"
-        android:textColor="#FFFFFF" />
+        android:layout_margin="40dp"
+        android:backgroundTint="#16213E"
+        android:text="EMERGENCY CALL"
+        android:letterSpacing="0.1"
+        android:textColor="#FFFFFF"
+        android:textSize="14sp"
+        android:elevation="0dp" />
 
 </RelativeLayout>

@@ -1,38 +1,42 @@
 package com.rakib.locknow
 
-import android.Manifest
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.rakib.locknow.ui.theme.LockNowTheme
 
 class MainActivity : ComponentActivity() {
@@ -59,13 +63,13 @@ class MainActivity : ComponentActivity() {
     private fun requestAccessibility() {
         val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
         startActivity(intent)
-        Toast.makeText(this, "Enable LockNow Accessibility Service for full freeze", Toast.LENGTH_LONG).show()
+        Toast.makeText(this, "Find 'LockNow' and turn it ON", Toast.LENGTH_LONG).show()
     }
 
     private fun requestDeviceAdmin() {
         val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
             putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent)
-            putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "This is required to prevent the app from being stopped.")
+            putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "Protects the app from being uninstalled during focus mode.")
         }
         startActivity(intent)
     }
@@ -85,132 +89,226 @@ class MainActivity : ComponentActivity() {
         } else {
             startService(intent)
         }
-        
         moveTaskToBack(true)
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainScreen(onStartLock: (Int) -> Unit, onEnableAdmin: () -> Unit, onEnableAccessibility: () -> Unit) {
+fun MainScreen(
+    onStartLock: (Int) -> Unit,
+    onEnableAdmin: () -> Unit,
+    onEnableAccessibility: () -> Unit
+) {
     val context = LocalContext.current
-    var durationText by remember { mutableStateOf("25") }
+    val lifecycleOwner = LocalLifecycleOwner.current
     
-    val isAdminActive = remember {
-        val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
-        val admin = ComponentName(context, DeviceAdminReceiver::class.java)
-        dpm.isAdminActive(admin)
-    }
+    var durationMinutes by remember { mutableStateOf(25) }
+    var isAdminActive by remember { mutableStateOf(false) }
+    var isAccessibilityEnabled by remember { mutableStateOf(false) }
+    var isOverlayAllowed by remember { mutableStateOf(false) }
 
-    val isAccessibilityEnabled = remember {
-        val service = "${context.packageName}/${LockAccessibilityService::class.java.canonicalName}"
-        val enabled = Settings.Secure.getInt(context.contentResolver, Settings.Secure.ACCESSIBILITY_ENABLED, 0)
-        enabled == 1
-    }
-
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        if (permissions.values.all { it }) {
-            val duration = durationText.toIntOrNull() ?: 25
-            onStartLock(duration)
-        } else {
-            Toast.makeText(context, "Permissions required", Toast.LENGTH_SHORT).show()
+    // Refresh status when returning to app
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+                val admin = ComponentName(context, DeviceAdminReceiver::class.java)
+                isAdminActive = dpm.isAdminActive(admin)
+                
+                val enabled = Settings.Secure.getInt(context.contentResolver, Settings.Secure.ACCESSIBILITY_ENABLED, 0)
+                isAccessibilityEnabled = enabled == 1
+                
+                isOverlayAllowed = Settings.canDrawOverlays(context)
+            }
         }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
+
+    val scrollState = rememberScrollState()
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.surface)
-                )
-            )
+            .background(Brush.verticalGradient(listOf(Color(0xFF0F0C29), Color(0xFF302B63), Color(0xFF24243E))))
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .verticalScroll(scrollState)
                 .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Icon(
-                Icons.Default.Lock,
-                contentDescription = null,
+            Spacer(modifier = Modifier.height(60.dp))
+            
+            // Premium Header
+            Surface(
                 modifier = Modifier.size(80.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
+                shape = CircleShape,
+                color = Color(0xFFE94560).copy(alpha = 0.1f),
+                border = androidx.compose.foundation.BorderStroke(2.dp, Color(0xFFE94560))
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.Lock, null, modifier = Modifier.size(40.dp), tint = Color(0xFFE94560))
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(16.dp))
             
             Text(
-                "LockNow",
+                "LockNow Pro",
                 fontSize = 32.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
+                fontWeight = FontWeight.Black,
+                color = Color.White,
+                letterSpacing = 1.sp
             )
-            
             Text(
-                "Break the dopamine loop",
-                fontSize = 16.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                "STRICT FOCUS MODE",
+                fontSize = 12.sp,
+                color = Color(0xFFE94560),
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 2.sp
             )
 
             Spacer(modifier = Modifier.height(48.dp))
 
+            // Professional Timer Section
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                shape = RoundedCornerShape(32.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.05f))
             ) {
-                Column(modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Focus Duration", fontWeight = FontWeight.SemiBold)
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("SELECT FOCUS TIME", color = Color.Gray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(16.dp))
-                    
-                    OutlinedTextField(
-                        value = durationText,
-                        onValueChange = { if (it.length <= 3) durationText = it },
-                        suffix = { Text("min") },
-                        modifier = Modifier.width(150.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        singleLine = true
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        TextButton(onClick = { if (durationMinutes > 5) durationMinutes -= 5 }) {
+                            Text("-", fontSize = 32.sp, color = Color.White)
+                        }
+                        Text(
+                            "$durationMinutes",
+                            fontSize = 64.sp,
+                            fontWeight = FontWeight.Light,
+                            color = Color.White,
+                            modifier = Modifier.padding(horizontal = 24.dp)
+                        )
+                        TextButton(onClick = { if (durationMinutes < 180) durationMinutes += 5 }) {
+                            Text("+", fontSize = 32.sp, color = Color.White)
+                        }
+                    }
+                    Text("MINUTES", color = Color.Gray, letterSpacing = 4.sp)
                 }
             }
 
             Spacer(modifier = Modifier.height(32.dp))
 
+            // Settings/Permissions Section
+            Text(
+                "SECURITY CONFIGURATION",
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Start,
+                color = Color.Gray,
+                fontWeight = FontWeight.Bold,
+                fontSize = 12.sp,
+                letterSpacing = 1.sp
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+
+            PermissionItem(
+                title = "Screen Overlay",
+                desc = "Required to block distractions",
+                isGranted = isOverlayAllowed,
+                icon = Icons.Default.Layers,
+                onClick = { /* Usually handled in start lock but can add here */ }
+            )
+            PermissionItem(
+                title = "Device Administrator",
+                desc = "Prevents uninstall/stop",
+                isGranted = isAdminActive,
+                icon = Icons.Default.AdminPanelSettings,
+                onClick = onEnableAdmin
+            )
+            PermissionItem(
+                title = "Accessibility Anti-Bypass",
+                desc = "Blocks settings & multi-tasking",
+                isGranted = isAccessibilityEnabled,
+                icon = Icons.Default.Security,
+                onClick = onEnableAccessibility
+            )
+
+            Spacer(modifier = Modifier.height(48.dp))
+
+            // Start Button
             Button(
                 onClick = {
-                    val perms = mutableListOf<String>()
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) perms.add(Manifest.permission.POST_NOTIFICATIONS)
-                    perms.add(Manifest.permission.READ_PHONE_STATE)
-                    
-                    val missing = perms.filter { ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED }
-                    if (missing.isNotEmpty()) {
-                        permissionLauncher.launch(missing.toTypedArray())
+                    if (!isOverlayAllowed) {
+                        Toast.makeText(context, "Overlay permission is mandatory!", Toast.LENGTH_SHORT).show()
                     } else {
-                        onStartLock(durationText.toIntOrNull() ?: 25)
+                        onStartLock(durationMinutes)
                     }
                 },
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-                shape = RoundedCornerShape(16.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(64.dp),
+                shape = RoundedCornerShape(20.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE94560))
             ) {
-                Icon(Icons.Default.PlayArrow, null)
-                Spacer(Modifier.width(8.dp))
-                Text("Activate Focus Mode", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text("ENTER DEEP WORK", fontSize = 16.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
             }
+            
+            Spacer(modifier = Modifier.height(32.dp))
+            
+            Text(
+                "Warning: You cannot cancel the lock once started.",
+                color = Color.Gray.copy(alpha = 0.5f),
+                fontSize = 11.sp,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
 
-            if (!isAdminActive) {
-                TextButton(onClick = onEnableAdmin, modifier = Modifier.padding(top = 16.dp)) {
-                    Text("Enable Extra Protection")
-                }
-            }
-
-            if (!isAccessibilityEnabled) {
-                TextButton(onClick = onEnableAccessibility) {
-                    Text("Enable Anti-Stop (Accessibility)")
-                }
-            }
+@Composable
+fun PermissionItem(
+    title: String,
+    desc: String,
+    isGranted: Boolean,
+    icon: ImageVector,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(if (isGranted) Color(0xFF4CAF50).copy(alpha = 0.05f) else Color.White.copy(alpha = 0.05f))
+            .clickable(enabled = !isGranted) { onClick() }
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .background(if (isGranted) Color(0xFF4CAF50).copy(alpha = 0.1f) else Color.White.copy(alpha = 0.1f), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, null, tint = if (isGranted) Color(0xFF4CAF50) else Color.White.copy(alpha = 0.5f), modifier = Modifier.size(20.dp))
+        }
+        Spacer(Modifier.width(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+            Text(desc, color = Color.Gray, fontSize = 11.sp)
+        }
+        if (isGranted) {
+            Icon(Icons.Default.Check, null, tint = Color(0xFF4CAF50), modifier = Modifier.size(20.dp))
+        } else {
+            Icon(Icons.Default.ChevronRight, null, tint = Color.Gray, modifier = Modifier.size(20.dp))
         }
     }
 }
