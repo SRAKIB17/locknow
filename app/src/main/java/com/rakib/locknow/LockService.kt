@@ -15,6 +15,7 @@ import android.telephony.PhoneStateListener
 import android.telephony.TelephonyManager
 import android.view.KeyEvent
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.Button
@@ -34,6 +35,28 @@ class LockService : Service() {
     private var overlayView: View? = null
     private var timer: CountDownTimer? = null
     private var isCallActive = false
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    private val forceFocusRunnable = object : Runnable {
+        override fun run() {
+            if (isLocked && !isCallActive) {
+                try {
+                    // Continuously collapse any notification shade or system dialogs
+                    @Suppress("DEPRECATION")
+                    val closeDialog = Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS)
+                    sendBroadcast(closeDialog)
+                    
+                    if (overlayView?.parent == null) {
+                        showOverlayViewAgain()
+                    }
+                    overlayView?.requestFocus()
+                } catch (e: Exception) {}
+                
+                // Fast heartbeat (50ms) to ensure absolute control
+                handler.postDelayed(this, 50)
+            }
+        }
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -55,6 +78,8 @@ class LockService : Service() {
         isLocked = true
         showNotification()
         showOverlay(durationMillis)
+        
+        handler.post(forceFocusRunnable)
 
         return START_STICKY
     }
@@ -81,21 +106,16 @@ class LockService : Service() {
     private fun showNotification() {
         val channelId = "lock_service_channel"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                channelId,
-                "Strict Focus Mode",
-                NotificationManager.IMPORTANCE_HIGH
-            )
+            val channel = NotificationChannel(channelId, "System Lock", NotificationManager.IMPORTANCE_HIGH)
             val manager = getSystemService(NotificationManager::class.java)
             manager?.createNotificationChannel(channel)
         }
 
         val notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("LockNow Deep Focus")
-            .setContentText("System is strictly locked for focus.")
+            .setContentTitle("LockNow: SYSTEM FROZEN")
+            .setContentText("Complete system restriction active.")
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setOngoing(true)
             .build()
 
@@ -109,35 +129,33 @@ class LockService : Service() {
     private fun showOverlay(durationMillis: Long) {
         val params = getOverlayParams()
 
+        // The Ultimate Touch and Key Interceptor
         val wrapper = object : FrameLayout(this) {
             override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-                if (event.keyCode == KeyEvent.KEYCODE_BACK || 
-                    event.keyCode == KeyEvent.KEYCODE_HOME || 
-                    event.keyCode == KeyEvent.KEYCODE_APP_SWITCH ||
-                    event.keyCode == KeyEvent.KEYCODE_VOLUME_UP ||
-                    event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
-                    return true
-                }
-                return super.dispatchKeyEvent(event)
+                // Block Power, Volume, Home, Back, everything.
+                return true 
+            }
+
+            override fun onInterceptTouchEvent(ev: MotionEvent?): Boolean {
+                // Intercept all touches except for the call button area
+                return super.onInterceptTouchEvent(ev)
             }
 
             override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
                 super.onWindowFocusChanged(hasWindowFocus)
                 if (!hasWindowFocus && !isCallActive) {
+                    // If focus shifts (e.g., notification shade pulled), collapse it
                     try {
                         @Suppress("DEPRECATION")
                         val closeDialog = Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS)
                         sendBroadcast(closeDialog)
                     } catch (e: Exception) {}
                     
-                    val handler = android.os.Handler(android.os.Looper.getMainLooper())
-                    for (i in 1..5) {
-                        handler.postDelayed({
-                            try {
-                                this.requestFocus()
-                            } catch (e: Exception) {}
-                        }, (i * 50).toLong())
-                    }
+                    handler.postDelayed({ 
+                        try {
+                            this.requestFocus() 
+                        } catch (e: Exception) {}
+                    }, 1) // Immediate recapture
                 }
             }
         }
@@ -150,11 +168,12 @@ class LockService : Service() {
         val emergencyNum = sharedPrefs.getString("EMERGENCY_NUMBER", "") ?: ""
 
         if (emergencyNum.isNotEmpty()) {
-            callButton?.text = "CALL: $emergencyNum"
+            callButton?.text = "EMERGENCY: $emergencyNum"
         }
 
         callButton?.setOnClickListener {
             if (emergencyNum.isNotEmpty()) {
+                // Use ACTION_CALL for direct sim calling without dialog (requires permission)
                 val callIntent = Intent(Intent.ACTION_CALL, Uri.parse("tel:$emergencyNum"))
                 callIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 if (ContextCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED) {
@@ -182,12 +201,14 @@ class LockService : Service() {
                 val seconds = (millisUntilFinished / 1000) % 60
                 timerTextView?.text = String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
                 
+                // Verify overlay is still there
                 if (!isCallActive && (overlayView == null || overlayView?.parent == null)) {
                     showOverlayViewAgain()
                 }
             }
 
             override fun onFinish() {
+                isLocked = false
                 stopSelf()
             }
         }.start()
@@ -203,15 +224,17 @@ class LockService : Service() {
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
             type,
-            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or // Capture all touches in window area
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                     WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
                     WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
                     WindowManager.LayoutParams.FLAG_FULLSCREEN or
-                    WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD,
+                    WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
+                    WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
             PixelFormat.TRANSLUCENT
         )
         params.gravity = android.view.Gravity.CENTER
+        // Ensure it covers cutout/notched areas too
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             params.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         }
@@ -238,6 +261,7 @@ class LockService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         isLocked = false
+        handler.removeCallbacks(forceFocusRunnable)
         timer?.cancel()
         hideOverlay()
     }
