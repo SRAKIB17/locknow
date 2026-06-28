@@ -41,7 +41,12 @@ class LockService : Service() {
         override fun run() {
             if (isLocked && !isCallActive) {
                 try {
-                    // Continuously collapse any notification shade or system dialogs
+                    // Force collapse status bar / notifications
+                    val statusBarService = getSystemService("statusbar")
+                    val statusBarClass = Class.forName("android.app.StatusBarManager")
+                    val collapseMethod = statusBarClass.getMethod("collapsePanels")
+                    collapseMethod.invoke(statusBarService)
+                    
                     @Suppress("DEPRECATION")
                     val closeDialog = Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS)
                     sendBroadcast(closeDialog)
@@ -50,10 +55,17 @@ class LockService : Service() {
                         showOverlayViewAgain()
                     }
                     overlayView?.requestFocus()
-                } catch (e: Exception) {}
+                } catch (e: Exception) {
+                    // Fallback to simpler method if reflection fails
+                    try {
+                        @Suppress("DEPRECATION")
+                        val closeDialog = Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS)
+                        sendBroadcast(closeDialog)
+                    } catch (ex: Exception) {}
+                }
                 
-                // Fast heartbeat (50ms) to ensure absolute control
-                handler.postDelayed(this, 50)
+                // Absolute high-frequency heartbeat (30ms) for total domination
+                handler.postDelayed(this, 30)
             }
         }
     }
@@ -112,8 +124,8 @@ class LockService : Service() {
         }
 
         val notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("LockNow: SYSTEM FROZEN")
-            .setContentText("Complete system restriction active.")
+            .setContentTitle("LockNow: ULTRA-RESTRICT MODE")
+            .setContentText("Complete system freeze active. No bypass possible.")
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setOngoing(true)
@@ -129,22 +141,26 @@ class LockService : Service() {
     private fun showOverlay(durationMillis: Long) {
         val params = getOverlayParams()
 
-        // The Ultimate Touch and Key Interceptor
         val wrapper = object : FrameLayout(this) {
             override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-                // Block Power, Volume, Home, Back, everything.
+                // Consume ALL key events (Home, Back, Recents, Power Menu Triggers, Volume)
                 return true 
             }
 
             override fun onInterceptTouchEvent(ev: MotionEvent?): Boolean {
-                // Intercept all touches except for the call button area
-                return super.onInterceptTouchEvent(ev)
+                // Return true to consume all touches for the whole screen
+                // but we need to let the child (call button) handle its own touches
+                return false 
+            }
+            
+            override fun onTouchEvent(event: MotionEvent?): Boolean {
+                // Swallow any touches that fall through to the background
+                return true
             }
 
             override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
                 super.onWindowFocusChanged(hasWindowFocus)
-                if (!hasWindowFocus && !isCallActive) {
-                    // If focus shifts (e.g., notification shade pulled), collapse it
+                if (!hasWindowFocus && !isCallActive && isLocked) {
                     try {
                         @Suppress("DEPRECATION")
                         val closeDialog = Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS)
@@ -153,9 +169,9 @@ class LockService : Service() {
                     
                     handler.postDelayed({ 
                         try {
-                            this.requestFocus() 
+                            if (isLocked) this.requestFocus() 
                         } catch (e: Exception) {}
-                    }, 1) // Immediate recapture
+                    }, 1)
                 }
             }
         }
@@ -173,7 +189,6 @@ class LockService : Service() {
 
         callButton?.setOnClickListener {
             if (emergencyNum.isNotEmpty()) {
-                // Use ACTION_CALL for direct sim calling without dialog (requires permission)
                 val callIntent = Intent(Intent.ACTION_CALL, Uri.parse("tel:$emergencyNum"))
                 callIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 if (ContextCompat.checkSelfPermission(this, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED) {
@@ -200,11 +215,6 @@ class LockService : Service() {
                 val minutes = (millisUntilFinished / 1000) / 60
                 val seconds = (millisUntilFinished / 1000) % 60
                 timerTextView?.text = String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
-                
-                // Verify overlay is still there
-                if (!isCallActive && (overlayView == null || overlayView?.parent == null)) {
-                    showOverlayViewAgain()
-                }
             }
 
             override fun onFinish() {
@@ -224,17 +234,16 @@ class LockService : Service() {
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
             type,
-            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or // Capture all touches in window area
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or // Allow covering status bar
                     WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
                     WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
                     WindowManager.LayoutParams.FLAG_FULLSCREEN or
-                    WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
-                    WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+                    WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD,
             PixelFormat.TRANSLUCENT
         )
         params.gravity = android.view.Gravity.CENTER
-        // Ensure it covers cutout/notched areas too
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             params.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         }
