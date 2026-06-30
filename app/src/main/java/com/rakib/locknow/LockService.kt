@@ -132,16 +132,21 @@ class LockService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val now = System.currentTimeMillis()
         val endTime = prefs.lockEndTime
-        
-        if (intent == null && endTime > now && prefs.isLocked) {
-            // Resuming after system restart
+        val isLockedState = prefs.isLocked
+
+        if (isLockedState && endTime > now) {
+            // Resume existing lockdown
             startLockdown(endTime - now)
         } else if (intent != null) {
+            // Start new lockdown
             val durationMinutes = intent.getIntExtra("DURATION_MINUTES", 25)
             val durationMillis = durationMinutes * 60 * 1000L
             val newEndTime = now + durationMillis
             prefs.lockEndTime = newEndTime
             startLockdown(durationMillis)
+        } else {
+            // No active lockdown and no intent, stop service
+            stopSelf()
         }
 
         return START_STICKY
