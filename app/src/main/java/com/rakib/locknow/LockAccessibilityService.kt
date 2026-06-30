@@ -20,8 +20,9 @@ class LockAccessibilityService : AccessibilityService() {
         if (!prefs.isLocked) return
 
         val packageName = event.packageName?.toString() ?: ""
+        val className = event.className?.toString() ?: ""
         
-        // Allowed apps: our app, dialers, and common launchers (to avoid home screen loops)
+        // Allowed apps: our app, dialers, and common launchers
         val allowedPackages = listOf(
             "com.rakib.locknow",
             "com.android.dialer",
@@ -40,8 +41,13 @@ class LockAccessibilityService : AccessibilityService() {
 
         val isAllowed = allowedPackages.any { packageName.contains(it) }
 
-        // 1. Aggressively close Notification Shade & Power Menu
+        // 1. Aggressively close Notification Shade & Power Menu & Accessibility Shortcuts
         if (packageName == "com.android.systemui") {
+            // Dismiss accessibility shortcut dialogs often found in SystemUI
+            if (className.contains("AccessibilityShortcut") || className.contains("AccessibilityMenu")) {
+                performGlobalAction(GLOBAL_ACTION_HOME)
+            }
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 performGlobalAction(GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE)
             } else {
@@ -52,7 +58,7 @@ class LockAccessibilityService : AccessibilityService() {
             performGlobalAction(GLOBAL_ACTION_HOME)
         }
 
-        // 2. Block Settings, Package Installer, and Play Store
+        // 2. Block Settings, Accessibility Settings & Shortcut Chooser
         val restrictedPackages = listOf(
             "com.android.settings",
             "com.google.android.settings",
@@ -62,6 +68,14 @@ class LockAccessibilityService : AccessibilityService() {
         )
 
         if (restrictedPackages.any { packageName.contains(it) }) {
+            // Detect accessibility shortcut chooser activity
+            if (className.contains("AccessibilityShortcutChooserActivity") || 
+                className.contains("AccessibilitySettings")) {
+                performGlobalAction(GLOBAL_ACTION_HOME)
+                bringAppToFront()
+                return
+            }
+
             val rootNode = rootInActiveWindow
             if (rootNode != null) {
                 if (shouldBlockNode(rootNode)) {
@@ -83,8 +97,8 @@ class LockAccessibilityService : AccessibilityService() {
 
     private fun shouldBlockNode(node: AccessibilityNodeInfo): Boolean {
         val forbiddenTexts = listOf(
-            "Force stop", "Uninstall", "Disable", "LockNow", 
-            "ফোর্স স্টপ", "আনইনস্টল", "নিষ্ক্রিয়", "লকনাউ"
+            "Force stop", "Uninstall", "Disable", "LockNow", "Accessibility shortcut",
+            "ফোর্স স্টপ", "আনইনস্টল", "নিষ্ক্রিয়", "লকনাউ", "অ্যাক্সেসিবিলিটি শর্টকাট"
         )
         for (text in forbiddenTexts) {
             if (node.findAccessibilityNodeInfosByText(text).isNotEmpty()) {
