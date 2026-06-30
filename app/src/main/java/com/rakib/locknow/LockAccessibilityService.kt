@@ -17,12 +17,11 @@ class LockAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
-        // Use PrefsManager for persistent state check
         if (!prefs.isLocked) return
 
         val packageName = event.packageName?.toString() ?: ""
         
-        // 1. Allowed System Components (Phone, Dialer)
+        // Allowed apps: our app, dialers, and common launchers (to avoid home screen loops)
         val allowedPackages = listOf(
             "com.rakib.locknow",
             "com.android.dialer",
@@ -31,12 +30,17 @@ class LockAccessibilityService : AccessibilityService() {
             "com.android.server.telecom",
             "com.android.incallui",
             "com.samsung.android.incallui",
-            "com.android.contacts"
+            "com.android.contacts",
+            "com.android.launcher",
+            "com.google.android.apps.nexuslauncher",
+            "com.miui.home",
+            "com.sec.android.app.launcher",
+            "com.huawei.android.launcher"
         )
 
         val isAllowed = allowedPackages.any { packageName.contains(it) }
 
-        // 2. Block Notification Shade & Power Menu (SystemUI)
+        // 1. Aggressively close Notification Shade & Power Menu
         if (packageName == "com.android.systemui") {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 performGlobalAction(GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE)
@@ -48,7 +52,7 @@ class LockAccessibilityService : AccessibilityService() {
             performGlobalAction(GLOBAL_ACTION_HOME)
         }
 
-        // 3. Block Settings & Package Installer
+        // 2. Block Settings, Package Installer, and Play Store
         val restrictedPackages = listOf(
             "com.android.settings",
             "com.google.android.settings",
@@ -70,7 +74,7 @@ class LockAccessibilityService : AccessibilityService() {
             }
         }
 
-        // 4. Global Navigation Block
+        // 3. Global Navigation Block for all other apps
         if (!isAllowed && event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             performGlobalAction(GLOBAL_ACTION_HOME)
             bringAppToFront()
@@ -78,7 +82,6 @@ class LockAccessibilityService : AccessibilityService() {
     }
 
     private fun shouldBlockNode(node: AccessibilityNodeInfo): Boolean {
-        // Search for specific forbidden keywords in multiple languages
         val forbiddenTexts = listOf(
             "Force stop", "Uninstall", "Disable", "LockNow", 
             "ফোর্স স্টপ", "আনইনস্টল", "নিষ্ক্রিয়", "লকনাউ"

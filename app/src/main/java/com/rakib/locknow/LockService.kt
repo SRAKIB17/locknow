@@ -87,8 +87,10 @@ class LockService : Service() {
             PowerManager.ACQUIRE_CAUSES_WAKEUP, 
             "LockNow:WakeUp"
         )
-        wakeLock.acquire(1000)
-        wakeLock.release()
+        if (!wakeLock.isHeld) {
+            wakeLock.acquire(1000)
+            wakeLock.release()
+        }
     }
 
     private val forceFocusRunnable = object : Runnable {
@@ -110,7 +112,7 @@ class LockService : Service() {
                     overlayView?.requestFocus()
                     updateDateTime()
                 } catch (e: Exception) {}
-                handler.postDelayed(this, 30)
+                handler.postDelayed(this, 50)
             }
         }
     }
@@ -128,21 +130,35 @@ class LockService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val durationMinutes = intent?.getIntExtra("DURATION_MINUTES", 25) ?: 25
-        totalDurationMillis = durationMinutes * 60 * 1000L
+        val now = System.currentTimeMillis()
+        val endTime = prefs.lockEndTime
         
-        val endTime = System.currentTimeMillis() + totalDurationMillis
-        prefs.lockEndTime = endTime
+        if (intent == null && endTime > now && prefs.isLocked) {
+            // Resuming after system restart
+            startLockdown(endTime - now)
+        } else if (intent != null) {
+            val durationMinutes = intent.getIntExtra("DURATION_MINUTES", 25)
+            val durationMillis = durationMinutes * 60 * 1000L
+            val newEndTime = now + durationMillis
+            prefs.lockEndTime = newEndTime
+            startLockdown(durationMillis)
+        }
+
+        return START_STICKY
+    }
+
+    private fun startLockdown(durationMillis: Long) {
+        totalDurationMillis = durationMillis
         prefs.isLocked = true
         isLocked = true
 
-        playAlert()
-        showOverlay(totalDurationMillis)
-        handler.post(forceFocusRunnable)
-        handler.post(quoteRunnable)
         showNotification()
-
-        return START_STICKY
+        showOverlay(durationMillis)
+        handler.removeCallbacks(forceFocusRunnable)
+        handler.post(forceFocusRunnable)
+        handler.removeCallbacks(quoteRunnable)
+        handler.post(quoteRunnable)
+        playAlert()
     }
 
     private fun playAlert() {
@@ -168,24 +184,32 @@ class LockService : Service() {
     }
 
     private fun setupCallListener() {
-        val telephonyManager = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
-        @Suppress("DEPRECATION")
-        val listener = object : PhoneStateListener() {
-            override fun onCallStateChanged(state: Int, phoneNumber: String?) {
-                when (state) {
-                    TelephonyManager.CALL_STATE_OFFHOOK, TelephonyManager.CALL_STATE_RINGING -> {
-                        isCallActive = true
-                        removeOverlay()
-                    }
-                    TelephonyManager.CALL_STATE_IDLE -> {
-                        isCallActive = false
-                        showOverlayViewAgain()
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) {
+            return
+        }
+
+        try {
+            val telephonyManager = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+            @Suppress("DEPRECATION")
+            val listener = object : PhoneStateListener() {
+                override fun onCallStateChanged(state: Int, phoneNumber: String?) {
+                    when (state) {
+                        TelephonyManager.CALL_STATE_OFFHOOK, TelephonyManager.CALL_STATE_RINGING -> {
+                            isCallActive = true
+                            removeOverlay()
+                        }
+                        TelephonyManager.CALL_STATE_IDLE -> {
+                            isCallActive = false
+                            if (isLocked) showOverlayViewAgain()
+                        }
                     }
                 }
             }
+            @Suppress("DEPRECATION")
+            telephonyManager.listen(listener, PhoneStateListener.LISTEN_CALL_STATE)
+        } catch (e: Exception) {
+            // Avoid crash if permission is revoked or system restriction occurs
         }
-        @Suppress("DEPRECATION")
-        telephonyManager.listen(listener, PhoneStateListener.LISTEN_CALL_STATE)
     }
 
     private fun showNotification() {
@@ -212,19 +236,15 @@ class LockService : Service() {
     }
 
     private fun showOverlay(durationMillis: Long) {
-        val params = getOverlayParams()
+        if (overlayView != null) removeOverlay()
 
+        val params = getOverlayParams()
         val wrapper = object : FrameLayout(this) {
             override fun dispatchKeyEvent(event: KeyEvent): Boolean = true 
             override fun onTouchEvent(event: MotionEvent?): Boolean = true
             override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
                 super.onWindowFocusChanged(hasWindowFocus)
                 if (!hasWindowFocus && !isCallActive && isLocked) {
-                    try {
-                        @Suppress("DEPRECATION")
-                        val closeDialog = Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS)
-                        sendBroadcast(closeDialog)
-                    } catch (e: Exception) {}
                     handler.postDelayed({ if (isLocked) this.requestFocus() }, 1)
                 }
             }
@@ -232,13 +252,11 @@ class LockService : Service() {
 
         LayoutInflater.from(this).inflate(R.layout.overlay_layout, wrapper, true)
         
-        // Cache views
         timerTextView = wrapper.findViewById(R.id.timerTextView)
         quoteTextView = wrapper.findViewById(R.id.quoteTextView)
         timeView = wrapper.findViewById(R.id.timeView)
         dateView = wrapper.findViewById(R.id.dateView)
         circularProgress = wrapper.findViewById(R.id.circularProgress)
-        
         val callButton = wrapper.findViewById<Button>(R.id.callButton)
         val remainingLabel = wrapper.findViewById<TextView>(R.id.remainingLabel)
 
@@ -251,16 +269,6 @@ class LockService : Service() {
         } else {
             callButton?.text = getString(R.string.emergency_title)
             callButton?.visibility = if (prefs.isEmergencyCallEnabled) View.VISIBLE else View.GONE
-        }
-
-        if (prefs.isQuotesEnabled) {
-            val quotes = resources.getStringArray(R.array.motivational_quotes)
-            if (quotes.isNotEmpty()) {
-                quoteTextView?.text = quotes.random()
-            }
-            quoteTextView?.visibility = View.VISIBLE
-        } else {
-            quoteTextView?.visibility = View.GONE
         }
 
         callButton?.setOnClickListener {
@@ -282,6 +290,7 @@ class LockService : Service() {
             windowManager?.addView(overlayView, params)
         } catch (e: Exception) {}
 
+        timer?.cancel()
         timer = object : CountDownTimer(durationMillis, 1000) {
             override fun onTick(millisUntilFinished: Long) {
                 val h = (millisUntilFinished / 1000) / 3600
@@ -308,7 +317,6 @@ class LockService : Service() {
     private fun updateDateTime() {
         val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
         val dateFormat = SimpleDateFormat("EEEE, MMMM dd", Locale.getDefault())
-        
         timeView?.text = timeFormat.format(Date())
         dateView?.text = dateFormat.format(Date())
     }
@@ -348,7 +356,7 @@ class LockService : Service() {
     }
 
     private fun showOverlayViewAgain() {
-        if (overlayView != null && overlayView?.parent == null) {
+        if (overlayView != null && overlayView?.parent == null && isLocked) {
             try {
                 windowManager?.addView(overlayView, getOverlayParams())
             } catch (e: Exception) {}
@@ -357,8 +365,6 @@ class LockService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        isLocked = false
-        prefs.isLocked = false
         handler.removeCallbacks(forceFocusRunnable)
         handler.removeCallbacks(quoteRunnable)
         timer?.cancel()

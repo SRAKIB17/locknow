@@ -120,6 +120,21 @@ class MainActivity : ComponentActivity() {
             requestOverlay()
             return
         }
+
+        // Request to disable battery optimization for stability
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val intent = Intent()
+            val packageName = packageName
+            val pm = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+            if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+                intent.action = Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+                intent.data = Uri.parse("package:$packageName")
+                try {
+                    startActivity(intent)
+                } catch (e: Exception) {}
+            }
+        }
+
         val intent = Intent(this, LockService::class.java).apply {
             putExtra("DURATION_MINUTES", durationMinutes)
         }
